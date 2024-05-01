@@ -35,7 +35,7 @@ float eBS = eyeBrightnessSmooth.y / 240.0;
 float sunVisibility = clamp(dot(sunVec, upVec) + 0.05, 0.0, 0.1) * 10.0;
 
 //Common Functions//
-void Defog(inout vec3 albedo) {
+void Defog(inout vec3 albedo, float fogDensity) {
 	float z = texture2D(depthtex0,gl_FragCoord.xy/vec2(viewWidth,viewHeight)).r;
 	if (z == 1.0) return;
 
@@ -43,7 +43,7 @@ void Defog(inout vec3 albedo) {
     vec4 viewPos = gbufferProjectionInverse * (screenPos * 2.0 - 1.0);
     viewPos /= viewPos.w;
 
-    float fog = length(viewPos) * FOG_DENSITY / 256.0;
+    float fog = length(viewPos) * fogDensity / 256.0;
 	float clearDay = sunVisibility * (1.0 - rainStrength);
 	fog *= (0.5 * rainStrength + 1.0) / (3.0 * clearDay + 1.0);
 	fog = 1.0 - exp(-2.0 * pow(fog, 0.25 * clearDay + 1.25) * eBS);
@@ -53,6 +53,7 @@ void Defog(inout vec3 albedo) {
 //Includes//
 #include "/lib/color/lightColor.glsl"
 #include "/lib/color/blocklightColor.glsl"
+#include "/lib/atmospherics/weatherDensity.glsl"
 
 //Program//
 void main() {
@@ -77,7 +78,7 @@ void main() {
 		#endif
 		
 		#if defined FOG && MC_VERSION < 11500
-		if (gl_FragCoord.z > 0.991) Defog(albedo.rgb);
+		if (gl_FragCoord.z > 0.991) Defog(albedo.rgb, fogDensity);
 		#endif
 
 		#if ALPHA_BLEND == 0

@@ -163,7 +163,7 @@ void main() {
 		float basicSubsurface = float(blockEntityId == 10109) * 0.5;
 		vec3 baseReflectance  = vec3(0.04);
 		
-		emission *= dot(albedo.rgb, albedo.rgb) * 0.333;
+		emission *= pow(max(max(albedo.r, albedo.g), albedo.b), 4.0);
 
 		vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z);
 		#ifdef TAA
@@ -258,8 +258,8 @@ void main() {
 		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, lightmap, color.a, NoL, vanillaDiffuse,
-				    parallaxShadow, emission, subsurface, basicSubsurface);
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, color.a, NoL, 
+					vanillaDiffuse, parallaxShadow, emission, subsurface, basicSubsurface);
 
 		#ifdef ADVANCED_MATERIALS
 		skyOcclusion = lightmap.y;

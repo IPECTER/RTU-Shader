@@ -163,11 +163,11 @@ void main() {
 		float emissive = (GetHandItem(50) + GetHandItem(89) + GetHandItem(213));
 		
 		float metalness      = 0.0;
-		float emission       = emissive * 0.25;
+		float emission       = emissive;
 		float subsurface     = 0.0;
 		vec3 baseReflectance = vec3(0.04);
 		
-		emission *= dot(albedo.rgb, albedo.rgb) * 0.333;
+		emission *= pow(max(max(albedo.r, albedo.g), albedo.b), 4.0) * 0.25;
 
 		vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z + 0.38);
 		#if defined TAA && !defined TAA_SELECTIVE
@@ -264,8 +264,8 @@ void main() {
 		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, lightmap, 1.0, NoL, vanillaDiffuse,
-				    parallaxShadow, emission, subsurface, 0.0);
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, vec3(0.0), lightmap, 1.0, NoL, 
+					vanillaDiffuse, parallaxShadow, emission, subsurface, 0.0);
 
 		#ifdef ADVANCED_MATERIALS
 		skyOcclusion = lightmap.y;

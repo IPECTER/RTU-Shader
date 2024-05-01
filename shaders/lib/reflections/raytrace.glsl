@@ -24,7 +24,11 @@ vec4 Raytrace(sampler2D depthtex, vec3 viewPos, vec3 normal, float dither, out f
 	float dist = 0.0;
 	
 	#ifdef TAA
+	#if TAA_MODE == 0
 	dither = fract(dither + frameCounter * 0.618);
+	#else
+	dither = fract(dither + frameCounter * 0.5);
+	#endif
 	#endif
 
 	vec3 start = viewPos + normal * 0.075;
@@ -72,4 +76,14 @@ vec4 Raytrace(sampler2D depthtex, vec3 viewPos, vec3 normal, float dither, out f
 	#endif
 
 	return vec4(pos, dist);
+}
+
+vec4 BasicReflect(vec3 viewPos, vec3 normal, out float border) {
+	vec3 reflectedViewPos = reflect(viewPos, normal) + normal * dot(viewPos, normal) * 0.5;
+
+	vec3 pos = nvec3(gbufferProjection * nvec4(reflectedViewPos)) * 0.5 + 0.5;
+
+	border = cdist(pos.st);
+
+	return vec4(pos, 0.0);
 }

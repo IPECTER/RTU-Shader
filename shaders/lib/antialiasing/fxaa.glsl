@@ -145,8 +145,11 @@ vec3 FXAA311(vec3 color) {
 		float subPixelOffset2 = (-2.0 * subPixelOffset1 + 3.0) * subPixelOffset1 * subPixelOffset1;
 		float subPixelOffsetFinal = subPixelOffset2 * subPixelOffset2 * FXAA_SUBPIXEL;
 
+		#ifdef TAA
+		subPixelOffsetFinal *= 0.5;
+		#endif
+
 		finalOffset = max(finalOffset, subPixelOffsetFinal);
-		
 		
 		// Compute the final UV coordinates.
 		vec2 finalUv = texCoord;

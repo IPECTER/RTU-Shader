@@ -11,6 +11,12 @@ void Outline(vec3 color, bool secondPass, out vec4 outerOutline, out vec4 innerO
 
     int sampleCount = viewHeight >= 720.0 ? 12 : 4;
 
+    #ifdef RETRO_FILTER
+    ph = RETRO_FILTER_SIZE / viewHeight;
+    pw = ph / aspectRatio;
+    sampleCount = 4;
+    #endif
+
 	for (int i = 0; i < sampleCount; i++) {
 		vec2 offset = vec2(pw, ph) * outlineOffsets[i];
         float linSampleZSum = 0.0, linSampleZDiff = 0.0;

@@ -205,15 +205,17 @@ float frametime = frameTimeCounter * ANIMATION_SPEED;
 //Program//
 void main() {
 	texCoord = gl_MultiTexCoord0.xy;
+	
+	int blockID = int(mod(max(mc_Entity.x - 10000, 0), 10000));
 
 	color = gl_Color;
 	
 	mat = 0;
-	if (mc_Entity.x == 10301 || mc_Entity.x == 10302) mat = 1;
-	if (mc_Entity.x == 10300 || mc_Entity.x == 10304) mat = 2;
+	if (blockID == 301 || blockID == 302) mat = 1;
+	if (blockID == 300 || blockID == 304) mat = 2;
 	
 	#ifndef SHADOW_VEGETATION
-	if (mc_Entity.x >= 10100 && mc_Entity.x <= 10104) mat = 3;
+	if (blockID >= 100 && blockID <= 104) mat = 3;
 	#endif
 	
 	vec4 position = shadowModelViewInverse * shadowProjectionInverse * ftransform();
@@ -223,7 +225,7 @@ void main() {
 	#endif
 	
 	float istopv = gl_MultiTexCoord0.t < mc_midTexCoord.t ? 1.0 : 0.0;
-	position.xyz = WavingBlocks(position.xyz, istopv);
+	position.xyz = WavingBlocks(position.xyz, blockID, istopv);
 
 	#ifdef WORLD_CURVATURE
 	position.y -= WorldCurvature(position.xz);

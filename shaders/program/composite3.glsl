@@ -123,7 +123,7 @@ void main() {
 	float z = texture2D(depthtex1, texCoord.st).x;
 
 	#ifdef OUTLINE_OUTER
-	DepthOutline(z);
+	DepthOutline(z, depthtex1);
 	#endif
 
 	color = DepthOfField(color, z);

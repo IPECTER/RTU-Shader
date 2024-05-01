@@ -4,14 +4,14 @@ uniform vec3 fogColor;
 
 vec4 GetWaterFog(vec3 viewPos) {
     float fog = length(viewPos) / waterFogRange;
-    fog = 1.0 - exp(-3.0 * fog);
+    fog = 1.0 - exp(-2.0 * fog);
     
     #if WATER_MODE == 0 || WATER_MODE == 2
-    vec3 waterFogColor = waterColor.rgb;
+    vec3 waterFogColor = waterColor.rgb * waterColor.a;
     #elif  WATER_MODE == 1 || WATER_MODE == 3
-    vec3 waterFogColor = fogColor * fogColor * 0.5;
+    vec3 waterFogColor = fogColor * fogColor * 0.125;
     #endif
-    waterFogColor *= 0.125 * (1.0 - max(blindFactor, darknessFactor));
+    waterFogColor *= WATER_F * WATER_F * (1.0 - max(blindFactor, darknessFactor));
 
     #ifdef OVERWORLD
     vec3 waterFogTint = lightCol * eBS * shadowFade * 0.9 + 0.1;

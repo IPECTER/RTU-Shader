@@ -81,7 +81,7 @@ void main() {
 	float dither = Bayer8(gl_FragCoord.xy);
 
 	#ifdef OUTLINE_OUTER
-	DepthOutline(z);
+	DepthOutline(z, depthtex1);
 	#endif
 
 	color = MotionBlur(color, z, dither);

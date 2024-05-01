@@ -266,8 +266,8 @@ void main() {
 		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, lightmap, 1.0, NoL, vanillaDiffuse,
-				    parallaxShadow, emission, subsurface, 0.0);
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, 1.0, NoL, 
+					vanillaDiffuse, parallaxShadow, emission, subsurface, 0.0);
 
 		#ifdef ADVANCED_MATERIALS
 		skyOcclusion = lightmap.y;

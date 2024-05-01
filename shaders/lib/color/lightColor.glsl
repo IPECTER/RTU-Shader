@@ -9,7 +9,7 @@ vec3 ambientEvening  = vec3(AMBIENT_ER, AMBIENT_EG, AMBIENT_EB) * AMBIENT_EI / 2
 vec3 ambientNight    = vec3(AMBIENT_NR, AMBIENT_NG, AMBIENT_NB) * AMBIENT_NI * 0.3 / 255.0;
 
 #ifdef WEATHER_PERBIOME
-uniform float isDesert, isMesa, isCold, isSwamp, isMushroom, isSavanna;
+uniform float isDesert, isMesa, isCold, isSwamp, isMushroom, isSavanna, isJungle;
 
 vec4 weatherRain     = vec4(vec3(WEATHER_RR, WEATHER_RG, WEATHER_RB) / 255.0, 1.0) * WEATHER_RI;
 vec4 weatherCold     = vec4(vec3(WEATHER_CR, WEATHER_CG, WEATHER_CB) / 255.0, 1.0) * WEATHER_CI;
@@ -18,14 +18,16 @@ vec4 weatherBadlands = vec4(vec3(WEATHER_BR, WEATHER_BG, WEATHER_BB) / 255.0, 1.
 vec4 weatherSwamp    = vec4(vec3(WEATHER_SR, WEATHER_SG, WEATHER_SB) / 255.0, 1.0) * WEATHER_SI;
 vec4 weatherMushroom = vec4(vec3(WEATHER_MR, WEATHER_MG, WEATHER_MB) / 255.0, 1.0) * WEATHER_MI;
 vec4 weatherSavanna  = vec4(vec3(WEATHER_VR, WEATHER_VG, WEATHER_VB) / 255.0, 1.0) * WEATHER_VI;
+vec4 weatherJungle   = vec4(vec3(WEATHER_JR, WEATHER_JG, WEATHER_JB) / 255.0, 1.0) * WEATHER_JI;
 
-float weatherWeight = isCold + isDesert + isMesa + isSwamp + isMushroom + isSavanna;
+float weatherWeight = isCold + isDesert + isMesa + isSwamp + isMushroom + isSavanna + isJungle;
 
 vec4 weatherCol = mix(
 	weatherRain,
 	(
 		weatherCold  * isCold  + weatherDesert   * isDesert   + weatherBadlands * isMesa    +
-		weatherSwamp * isSwamp + weatherMushroom * isMushroom + weatherSavanna  * isSavanna
+		weatherSwamp * isSwamp + weatherMushroom * isMushroom + weatherSavanna  * isSavanna +
+		weatherJungle * isJungle
 	) / max(weatherWeight, 0.0001),
 	weatherWeight
 );

@@ -17,6 +17,7 @@ varying vec3 sunVec, upVec, eastVec;
 //Uniforms//
 uniform int frameCounter;
 uniform int isEyeInWater;
+uniform int moonPhase;
 uniform int worldTime;
 
 uniform float blindFactor, darknessFactor, nightVision;
@@ -57,11 +58,15 @@ uniform sampler2D colortex8;
 uniform sampler2D colortex9;
 #endif
 
-//Optifine Constants//
-#ifdef AO
-const bool colortex4MipmapEnabled = true;
+#ifdef DISTANT_HORIZONS
+uniform float dhFarPlane, dhNearPlane;
+
+uniform mat4 dhProjectionInverse;
+
+uniform sampler2D dhDepthTex0;
 #endif
 
+//Optifine Constants//
 #if defined ADVANCED_MATERIALS && defined REFLECTION_SPECULAR
 const bool colortex0MipmapEnabled = true;
 const bool colortex5MipmapEnabled = true;
@@ -79,11 +84,18 @@ float frametime = float(worldTime) * 0.05 * ANIMATION_SPEED;
 float frametime = frameTimeCounter * ANIMATION_SPEED;
 #endif
 
-vec2 aoOffsets[4] = vec2[4](
-	vec2( 1.0,  0.0),
-	vec2( 0.0,  1.0),
-	vec2(-1.0,  0.0),
-	vec2( 0.0, -1.0)
+vec2 aoSampleOffsets[4] = vec2[4](
+	vec2( 1.5,  0.5),
+	vec2(-0.5,  1.5),
+	vec2(-1.5, -0.5),
+	vec2( 0.5, -1.5)
+);
+
+vec2 aoDepthOffsets[4] = vec2[4](
+	vec2( 2.0,  1.0),
+	vec2(-1.0,  2.0),
+	vec2(-2.0, -1.0),
+	vec2( 1.0, -2.0)
 );
 
 vec2 glowOffsets[16] = vec2[16](
@@ -107,6 +119,28 @@ vec2 glowOffsets[16] = vec2[16](
 
 vec3 lightVec = sunVec * ((timeAngle < 0.5325 || timeAngle > 0.9675) ? 1.0 : -1.0);
 
+vec3 moonPhaseVecs[8] = vec3[8](
+	vec3( 0.0 ,  0.0 ,  1.0 ),
+	vec3( 0.0 , -0.89,  0.45),
+	vec3( 0.0 , -1.0 ,  0.0 ),
+	vec3( 0.0 , -0.45, -0.89),
+	vec3( 0.0 ,  0.0 , -1.0 ),
+	vec3( 0.0 ,  0.45, -0.89),
+	vec3( 0.0 ,  1.0 ,  0.0 ),
+	vec3( 0.0 ,  0.89,  0.45)
+);
+
+vec2 moonDiffuse[8] = vec2[8](
+	vec2( 0.0  ,  0.0  ),
+	vec2(-0.125,  1.0  ),
+	vec2(-0.2  ,  0.625),
+	vec2(-0.8  ,  0.375),
+	vec2(-0.75 , -0.25 ),
+	vec2(-0.8  ,  0.375),
+	vec2(-0.2  ,  0.625),
+	vec2(-0.125,  1.0  )
+);
+
 //Common Functions//
 float GetLuminance(vec3 color) {
 	return dot(color,vec3(0.299, 0.587, 0.114));
@@ -123,18 +157,43 @@ float GetAmbientOcclusion(float z){
 	float lz = GetLinearDepth(z);
 	
 	for(int i = 0; i < 4; i++){
-		vec2 offset = aoOffsets[i] / vec2(viewWidth, viewHeight);
-		float samplez = GetLinearDepth(texture2D(depthtex0, texCoord + offset * 3.0).r);
+		vec2 sampleOffset = aoSampleOffsets[i] / vec2(viewWidth, viewHeight);
+		vec2 depthOffset = aoDepthOffsets[i] / vec2(viewWidth, viewHeight);
+		float samplez = GetLinearDepth(texture2D(depthtex0, texCoord + depthOffset).r);
 		float wg = max(1.0 - 2.0 * far * abs(lz - samplez), 0.00001);
-		ao += texture2DLod(colortex4, texCoord + offset * 2.0, 1).r * wg;
+		ao += texture2D(colortex4, texCoord + sampleOffset).r * wg;
 		tw += wg;
 	}
 	ao /= tw;
-	if(tw < 0.0001) ao = texture2DLod(colortex4, texCoord, 2).r;
+	if(tw < 0.0001) ao = texture2D(colortex4, texCoord).r;
 	
-	//return pow(texture2DLod(colortex4, texCoord, 2.0).r, AO_STRENGTH);
 	return pow(ao, AO_STRENGTH);
 }
+
+#ifdef DISTANT_HORIZONS
+float GetDHLinearDepth(float depth) {
+   return (2.0 * dhNearPlane) / (dhFarPlane + dhNearPlane - depth * (dhFarPlane - dhNearPlane));
+}
+
+float GetDHAmbientOcclusion(float dhZ){
+	float ao = 0.0;
+	float tw = 0.0;
+	float lz = GetDHLinearDepth(dhZ);
+	
+	for(int i = 0; i < 4; i++){
+		vec2 sampleOffset = aoSampleOffsets[i] / vec2(viewWidth, viewHeight);
+		vec2 depthOffset = aoDepthOffsets[i] / vec2(viewWidth, viewHeight);
+		float samplez = GetDHLinearDepth(texture2D(dhDepthTex0, texCoord + depthOffset).r);
+		float wg = max(1.0 - 2.0 * far * abs(lz - samplez), 0.00001);
+		ao += texture2D(colortex4, texCoord + sampleOffset).r * wg;
+		tw += wg;
+	}
+	ao /= tw;
+	if(tw < 0.0001) ao = texture2D(colortex4, texCoord).r;
+	
+	return pow(ao, AO_STRENGTH + 1.0);
+}
+#endif
 #endif
 
 void GlowOutline(inout vec3 color){
@@ -155,12 +214,15 @@ void GlowOutline(inout vec3 color){
 #include "/lib/color/blocklightColor.glsl"
 #include "/lib/color/waterColor.glsl"
 #include "/lib/util/dither.glsl"
+#include "/lib/atmospherics/weatherDensity.glsl"
 #include "/lib/atmospherics/sky.glsl"
 #include "/lib/atmospherics/fog.glsl"
 #include "/lib/atmospherics/clouds.glsl"
+#include "/lib/atmospherics/sunmoon.glsl"
 
 #ifdef OUTLINE_ENABLED
 #include "/lib/util/outlineOffset.glsl"
+#include "/lib/util/outlineDepth.glsl"
 #include "/lib/atmospherics/waterFog.glsl"
 #include "/lib/post/outline.glsl"
 #endif
@@ -173,15 +235,48 @@ void GlowOutline(inout vec3 color){
 #include "/lib/reflections/roughReflections.glsl"
 #endif
 
+#ifdef END
+vec3 GetEndSkyColor(vec3 viewPos) {
+	vec4 worldPos = gbufferModelViewInverse * vec4(viewPos.xyz, 1.0);
+	worldPos.xyz /= worldPos.w;
+
+	worldPos = normalize(worldPos);
+
+	vec3 sky = vec3(0.0);
+	vec3 absWorldPos = abs(worldPos.xyz);
+	float maxViewDir = absWorldPos.x;
+	sky = vec3(worldPos.yz, 0.0);
+	if (absWorldPos.y > maxViewDir) {
+		maxViewDir = absWorldPos.y;
+		sky = vec3(worldPos.xz, 0.0);
+	}
+	if (absWorldPos.z > maxViewDir) {
+		maxViewDir = absWorldPos.z;
+		sky = vec3(worldPos.xy, 0.0);
+	}
+	vec2 skyUV = sky.xy * 2.0;
+	skyUV = (floor(skyUV * 512.0) + 0.5) / 512.0;
+	float noise = texture2D(noisetex, skyUV).b;
+	sky = vec3(1.0) * pow(noise * 0.3 + 0.35, 2.0);
+	sky *= sky;
+	sky *= endCol.rgb * 0.03;
+	return sky;
+}
+#endif
+
 //Program//
 void main() {
     vec4 color = texture2D(colortex0, texCoord);
 	float z = texture2D(depthtex0, texCoord).r;
+	
+	#ifdef DISTANT_HORIZONS
+	float dhZ = texture2D(dhDepthTex0, texCoord).r;
+	#endif
 
 	float dither = Bayer8(gl_FragCoord.xy);
 
 	#if ALPHA_BLEND == 0
-	if (z == 1.0) color.rgb = max(color.rgb - dither / vec3(64.0), vec3(0.0));
+	if (z == 1.0) color.rgb = max(color.rgb - dither / vec3(128.0), vec3(0.0));
 	color.rgb *= color.rgb;
 	#endif
 	
@@ -235,9 +330,9 @@ void main() {
 				worldPos.xyz /= worldPos.w;
 
 				vec3 cameraPos = GetReflectedCameraPos(worldPos.xyz, normal);
-				float closestLength = 0.0;
+				float cloudViewLength = 0.0;
 
-				vec4 cloud = DrawCloudVolumetric(skyRefPos * 8192.0, cameraPos, 1.0, dither, lightCol, ambientCol, closestLength, true);
+				vec4 cloud = DrawCloudVolumetric(skyRefPos * 8192.0, cameraPos, 1.0, dither, lightCol, ambientCol, cloudViewLength, true);
 				skyReflection = mix(skyReflection, cloud.rgb, cloud.a * cloudMixRate);
 				#endif
 
@@ -272,14 +367,61 @@ void main() {
 		#endif
 
 		Fog(color.rgb, viewPos.xyz);
+	
+	#ifdef DISTANT_HORIZONS
+	} else if (dhZ < 1.0) {
+		z = 1.0 - 1e-5;
+		
+		vec4 dhScreenPos = vec4(texCoord, dhZ, 1.0);
+		viewPos = dhProjectionInverse * (dhScreenPos * 2.0 - 1.0);
+		viewPos /= viewPos.w;
+
+		#ifdef AO
+		color.rgb *= GetDHAmbientOcclusion(dhZ);
+		#endif
+		
+		Fog(color.rgb, viewPos.xyz);
+	#endif
 	} else {
+		#if defined OVERWORLD && defined SKY_DEFERRED
+		color.rgb += GetSkyColor(viewPos.xyz, false);
+	
+		#ifdef ROUND_SUN_MOON
+		vec3 lightMA = mix(lightMorning, lightEvening, mefade);
+		vec3 sunColor = mix(lightMA, sqrt(lightDay * lightMA * LIGHT_DI), timeBrightness);
+		vec3 moonColor = sqrt(lightNight);
+
+		RoundSunMoon(color.rgb, viewPos.xyz, sunColor, moonColor);
+		#endif
+
+		#ifdef STARS
+		if (moonVisibility > 0.0) DrawStars(color.rgb, viewPos.xyz);
+		#endif
+
+		#ifdef AURORA
+		color.rgb += DrawAurora(viewPos.xyz, dither, 24);
+		#endif
+
+		SunGlare(color.rgb, viewPos.xyz, lightCol);
+
+		color.rgb *= 1.0 + nightVision;
+		#ifdef CLASSIC_EXPOSURE
+		color.rgb *= 4.0 - 3.0 * eBS;
+		#endif
+		#endif
 		#ifdef NETHER
 		color.rgb = netherCol.rgb * 0.0425;
 		#endif
-		#if defined END && !defined LIGHT_SHAFT
+		#ifdef END
+		#ifdef SHADER_END_SKY
+		color.rgb = GetEndSkyColor(viewPos.xyz);
+		#endif
+
+		#ifndef LIGHT_SHAFT
 		float VoL = dot(normalize(viewPos.xyz), lightVec);
 		VoL = pow(VoL * 0.5 + 0.5, 16.0) * 0.75 + 0.25;
 		color.rgb += endCol.rgb * 0.04 * VoL;
+		#endif
 		#endif
 
 		if (isEyeInWater == 2) {
@@ -293,30 +435,51 @@ void main() {
 		if (blindFactor > 0.0 || darknessFactor > 0.0) color.rgb *= 1.0 - max(blindFactor, darknessFactor);
 	}
 
-	float closestLength = 2.0 * far;
+	vec4 cloud = vec4(0.0);
+	float cloudDither = BayerCloud8(gl_FragCoord.xy);
+
+	float cloudMaxDistance = 2.0 * far;
+	#ifdef DISTANT_HORIZONS
+	cloudMaxDistance = max(cloudMaxDistance, dhFarPlane);
+	#endif
+
+	float cloudViewLength = cloudMaxDistance;
+	float cloudSampleZ = z;
+	
+	#ifdef OUTLINE_OUTER
+	DepthOutline(cloudSampleZ, depthtex0);
+	#endif
+
 	#ifdef OVERWORLD
 	#if CLOUDS == 1
-	vec4 cloud = DrawCloudSkybox(viewPos.xyz, z, dither, lightCol, ambientCol, false);
-	color.rgb = mix(color.rgb, cloud.rgb, cloud.a);
+	cloud = DrawCloudSkybox(viewPos.xyz, cloudSampleZ, cloudDither, lightCol, ambientCol, false);
 	#endif
+
 	#if CLOUDS == 2
-	vec4 cloud = DrawCloudVolumetric(viewPos.xyz, cameraPosition, z, dither, lightCol, ambientCol, closestLength, false);
+	vec4 cloudViewPos = viewPos;
 
-	// if (texCoord.x < 0.5) {
-	// 	cloud = DrawCloudSkybox(viewPos.xyz, z, dither, lightCol, ambientCol, false);
-	// 	closestLength = 2.0 * far;
-	// }
+	#ifdef OUTLINE_OUTER
+	cloudViewPos = gbufferProjectionInverse * (vec4(texCoord, cloudSampleZ, 1.0) * 2.0 - 1.0);
+	cloudViewPos /= cloudViewPos.w;
+	#endif
+
+	cloud = DrawCloudVolumetric(cloudViewPos.xyz, cameraPosition, cloudSampleZ, cloudDither, lightCol, ambientCol, cloudViewLength, false);
+	#endif
+
+	#ifndef LIGHT_SHAFT
+	SunGlare(cloud.rgb, viewPos.xyz, lightCol);
+	#endif
 
 	color.rgb = mix(color.rgb, cloud.rgb, cloud.a);
 	#endif
-	#endif
-	closestLength /= 2.0 * far;
+	cloudViewLength /= cloudMaxDistance;
 
 	#ifdef OUTLINE_ENABLED
+	outerOutline.rgb = mix(outerOutline.rgb, cloud.rgb, cloud.a);
 	color.rgb = mix(color.rgb, outerOutline.rgb, outerOutline.a);
 	#endif
 
-	#if MC_VERSION >= 10900
+	#if MC_VERSION >= 10900 && !defined IS_IRIS
 	float isGlowing = texture2D(colortex3, texCoord).b;
 	if (isGlowing > 0.5) GlowOutline(color.rgb);
 	#endif
@@ -326,20 +489,25 @@ void main() {
 	#if ALPHA_BLEND == 0
 	color.rgb = sqrt(max(color.rgb, vec3(0.0)));
 	#endif
+
+	float reflectionMask = float(z < 1.0);
+	#ifdef DISTANT_HORIZONS
+	reflectionMask = max(reflectionMask, float(dhZ < 1.0));
+	#endif
     
     /*DRAWBUFFERS:04 */
     gl_FragData[0] = color;
-	gl_FragData[1] = vec4(closestLength, 0.0, 0.0, 1.0);
+	gl_FragData[1] = vec4(cloudViewLength, 0.0, 0.0, 1.0);
 
 	#if !defined REFLECTION_PREVIOUS && REFRACTION == 0
 	/*DRAWBUFFERS:045*/
-	gl_FragData[2] = vec4(reflectionColor, float(z < 1.0));
+	gl_FragData[2] = vec4(reflectionColor, reflectionMask);
 	#elif defined REFLECTION_PREVIOUS && REFRACTION > 0
 	/*DRAWBUFFERS:046*/
 	gl_FragData[2] = vec4(0.0, 0.0, 0.0, 1.0);
 	#elif !defined REFLECTION_PREVIOUS && REFRACTION > 0
 	/*DRAWBUFFERS:0456*/
-	gl_FragData[2] = vec4(reflectionColor, float(z < 1.0));
+	gl_FragData[2] = vec4(reflectionColor, reflectionMask);
 	gl_FragData[3] = vec4(0.0, 0.0, 0.0, 1.0);
 	#endif
 }

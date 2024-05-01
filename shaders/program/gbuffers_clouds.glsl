@@ -62,7 +62,7 @@ void main() {
 		  vanillaDiffuse = mix(vanillaDiffuse, 0.75, rainStrength * 0.75);
 		  vanillaDiffuse*= vanillaDiffuse;
 
-	albedo.rgb *= lightCol * vanillaDiffuse;
+	albedo.rgb *= lightCol * vanillaDiffuse * CLOUD_BRIGHTNESS;
 	albedo.rgb *= mix(0.4 - 0.25 * rainStrength, 0.5 - 0.425 * rainStrength, sunVisibility);
 	
 	vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z);
@@ -73,10 +73,20 @@ void main() {
 	#endif
 	vec3 worldPos = ToWorld(viewPos);
 
-	float worldDistance = length(worldPos.xz) / 256.0;
-	float distantFade = 1.0 - smoothstep(0.5, 1.0, worldDistance);
+	#if FOG_VANILLA_CLOUD > 0
+	#if FOG_VANILLA_CLOUD == 1
+	float vanillaFogEnd = 4.0;
+	#elif FOG_VANILLA_CLOUD == 2
+	float vanillaFogEnd = 2.0;
+	#else
+	float vanillaFogEnd = 1.0;
+	#endif
 
-	albedo.a *= color.a * distantFade;
+	float worldDistance = length(worldPos.xz) / 256.0;
+	float vanillaFog = 1.0 - smoothstep(0.5, vanillaFogEnd, worldDistance);
+
+	albedo.a *= color.a * vanillaFog;
+	#endif
 
 	#if ALPHA_BLEND == 0
 	albedo.rgb = sqrt(max(albedo.rgb, vec3(0.0)));

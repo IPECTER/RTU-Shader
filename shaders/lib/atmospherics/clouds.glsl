@@ -19,7 +19,7 @@ float CloudSampleBase(vec2 coord, vec2 wind, float cloudGradient, float sunCover
 	noiseCoverage = noiseCoverage * noiseCoverage * 4.0;
 	
 	float noise = mix(noiseBase, noiseDetail, 0.0476 * CLOUD_DETAIL) * 21.0 - noiseCoverage;
-	noise = mix(noise, 21.0, 0.33 * rainStrength);
+	noise = mix(noise, 21.0 - noiseCoverage * 2.5, 0.33 * rainStrength);
 		
 	noise = max(noise - (sunCoverage * 3.0 + CLOUD_AMOUNT), 0.0);
 	noise *= CLOUD_DENSITY * multiplier;
@@ -35,7 +35,7 @@ float CloudSampleSkybox(vec2 coord, vec2 wind, float cloudGradient, float sunCov
 
 float CloudSampleVolumetric(vec2 coord, vec2 wind, float cloudGradient, float sunCoverage, float dither) {
 	coord.xy /= CLOUD_VOLUMETRIC_SCALE;
-	return CloudSampleBase(coord, wind, cloudGradient, sunCoverage, dither, 0.2);
+	return CloudSampleBase(coord, wind, cloudGradient, sunCoverage, dither, 0.125);
 }
 
 float InvLerp(float v, float l, float h) {
@@ -46,7 +46,11 @@ vec4 DrawCloudSkybox(vec3 viewPos, float z, float dither, vec3 lightCol, vec3 am
 	if (z < 1.0) return vec4(0.0);
 
 	#ifdef TAA
+	#if TAA_MODE == 0
 	dither = fract(dither + frameCounter * 0.618);
+	#else
+	dither = fract(dither + frameCounter * 0.5);
+	#endif
 	#endif
 
 	int samples = CLOUD_THICKNESS * 2;
@@ -60,7 +64,8 @@ vec4 DrawCloudSkybox(vec3 viewPos, float z, float dither, vec3 lightCol, vec3 am
 	float VoU = dot(nViewPos, upVec);
 	float VoL = dot(nViewPos, lightVec);
 	
-	float sunCoverage = pow(clamp(abs(VoL) * 2.0 - 1.0, 0.0, 1.0), 12.0) * (1.0 - rainStrength);
+	float sunCoverage = mix(abs(VoL), max(VoL, 0.0), shadowFade);
+	sunCoverage = pow(clamp(sunCoverage * 2.0 - 1.0, 0.0, 1.0), 12.0) * (1.0 - rainStrength);
 
 	vec2 wind = vec2(
 		frametime * CLOUD_SPEED * 0.0005,
@@ -72,7 +77,7 @@ vec4 DrawCloudSkybox(vec3 viewPos, float z, float dither, vec3 lightCol, vec3 am
 	if (VoU > 0.025) {
 		vec3 wpos = normalize((gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz);
 
-		float halfVoL = VoL * shadowFade * 0.5 + 0.5;
+		float halfVoL = mix(abs(VoL) * 0.8, VoL, shadowFade) * 0.5 + 0.5;
 		float halfVoLSqr = halfVoL * halfVoL;
 		float scattering = pow(halfVoL, 6.0);
 		float noiseLightFactor = (2.0 - 1.5 * VoL * shadowFade) * CLOUD_DENSITY * 0.5;
@@ -93,16 +98,16 @@ vec4 DrawCloudSkybox(vec3 viewPos, float z, float dither, vec3 lightCol, vec3 am
 			currentStep += sampleStep;
 		}
 		cloudLighting = mix(cloudLighting, 1.0, (1.0 - cloud * cloud) * scattering * 0.5);
+		cloudLighting *= (1.0 - 0.9 * rainStrength);
+
 		cloudColor = mix(
-			ambientCol * (0.35 * sunVisibility + 0.5),
+			ambientCol * (0.3 * sunVisibility + 0.5),
 			lightCol * (0.85 + 1.15 * scattering),
 			cloudLighting
 		);
-		cloudColor *= 1.0 - 0.6 * rainStrength;
-		// cloudColor = vec3(cloudLighting);
+		cloudColor *= 1.0 - 0.4 * rainStrength;
 
-		cloud *= clamp(1.0 - exp(-16.0 / max(FOG_DENSITY, 0.5) * VoU + 0.5), 0.0, 1.0);
-		cloud *= 1.0 - 0.6 * rainStrength;
+		cloud *= clamp(1.0 - exp(-16.0 / max(fogDensity, 0.5) * VoU + 0.5), 0.0, 1.0);
 
 		if (fadeFaster) {
 			cloud *= 1.0 - pow(1.0 - VoU, 4.0);
@@ -133,9 +138,13 @@ vec3 GetReflectedCameraPos(vec3 worldPos, vec3 normal) {
 	return cameraPos;
 }
 
-vec4 DrawCloudVolumetric(vec3 viewPos, vec3 cameraPos, float z, float dither, vec3 lightCol, vec3 ambientCol, inout float closestLength, bool fadeFaster) {
+vec4 DrawCloudVolumetric(vec3 viewPos, vec3 cameraPos, float z, float dither, vec3 lightCol, vec3 ambientCol, inout float cloudViewLength, bool fadeFaster) {
 	#ifdef TAA
+	#if TAA_MODE == 0
 	dither = fract(dither + frameCounter * 0.618);
+	#else
+	dither = fract(dither + frameCounter * 0.5);
+	#endif
 	#endif
 
 	vec3 nViewPos = normalize(viewPos);
@@ -156,8 +165,7 @@ vec4 DrawCloudVolumetric(vec3 viewPos, vec3 cameraPos, float z, float dither, ve
 	float nearestPlane = max(min(lowerPlane, upperPlane), 0.0);
 	float furthestPlane = max(lowerPlane, upperPlane);
 
-	float maxClosestLength = closestLength;
-	float closestLengthThreshold = 0.5 * dither + 0.35;
+	float maxcloudViewLength = cloudViewLength;
 
 	if (furthestPlane < 0) return vec4(0.0);
 
@@ -165,11 +173,14 @@ vec4 DrawCloudVolumetric(vec3 viewPos, vec3 cameraPos, float z, float dither, ve
 
 	vec3 startPos = cameraPos + nearestPlane * nWorldPos;
 
-	float sampleLength = CLOUD_THICKNESS * CLOUD_VOLUMETRIC_SCALE / 2.0;
-	sampleLength /= (3.0 * nWorldPos.y * nWorldPos.y) + 1.0;
-	vec3 sampleStep = nWorldPos * sampleLength;
-	int samples = int(min(planeDifference / sampleLength, 32) + 1 + dither);
+	float scaling = abs(cameraPosition.y - (upperY + lowerY) * 0.5) / ((upperY - lowerY) * 0.5);
+	scaling = clamp((scaling - 1.0) * CLOUD_THICKNESS * 0.125, 0.0, 1.0);
 
+	float sampleLength = CLOUD_THICKNESS * CLOUD_VOLUMETRIC_SCALE / 2.0;
+	sampleLength /= (4.0 * nWorldPos.y * nWorldPos.y) * scaling + 1.0;
+	vec3 sampleStep = nWorldPos * sampleLength;
+	int samples = int(min(planeDifference / sampleLength, 32) + 1);
+	
 	vec3 samplePos = startPos + sampleStep * dither;
 	float sampleTotalLength = nearestPlane + sampleLength * dither;
 
@@ -188,56 +199,71 @@ vec4 DrawCloudVolumetric(vec3 viewPos, vec3 cameraPos, float z, float dither, ve
 	float sunCoverage = mix(abs(VoL), max(VoL, 0.0), shadowFade);
 	sunCoverage = pow(clamp(sunCoverage * 2.0 - 1.0, 0.0, 1.0), 12.0) * (1.0 - rainStrength);
 
-	float halfVoL = VoL * shadowFade * 0.5 + 0.5;
+	float halfVoL = mix(abs(VoL) * 0.8, VoL, shadowFade) * 0.5 + 0.5;
 	float halfVoLSqr = halfVoL * halfVoL;
 
 	float scattering = pow(halfVoL, 6.0);
-	float noiseLightFactor = (2.0 - 1.5 * VoL * shadowFade) * CLOUD_DENSITY * 1.0;
+	float noiseLightFactor = (2.0 - 1.5 * VoL * shadowFade) * CLOUD_DENSITY * 0.5;
 
-	float viewLengthSoftMin = viewLength - sampleLength;
-	float viewLengthSoftMax = viewLength + sampleLength;
+	float viewLengthSoftMin = viewLength - sampleLength * 0.5;
+	float viewLengthSoftMax = viewLength + sampleLength * 0.5;
+
+	float fade = 1.0;
+	float fadeStart = 32.0 / max(fogDensity, 0.5);
+	float fadeEnd = (fadeFaster ? 80.0 : 240.0) / max(fogDensity, 0.5);
 
 	for (int i = 0; i < samples; i++) {
-		if (cloudFaded > 0.99) break;
+		if (cloud > 0.99) break;
 		if (sampleTotalLength > viewLengthSoftMax && z < 1.0) break;
 
 		float cloudGradient = InvLerp(samplePos.y, lowerY, upperY);
 		float xzNormalizedDistance = length(samplePos.xz - cameraPos.xz) / CLOUD_VOLUMETRIC_SCALE;
 
 		float noise = CloudSampleVolumetric(samplePos.xz, wind, cloudGradient, sunCoverage, dither);
+		noise *= step(lowerY, samplePos.y) * step(samplePos.y, upperY);
 
 		float sampleLighting = pow(cloudGradient, 1.125 * halfVoLSqr + 0.875) * 0.8 + 0.2;
 		sampleLighting *= 1.0 - pow(noise, noiseLightFactor);
 
-		cloudLighting = mix(cloudLighting, sampleLighting, noise * (1.0 - cloud * cloud));
-		cloud = mix(cloud, 1.0, noise);
+		float sampleFade = InvLerp(xzNormalizedDistance, fadeEnd, fadeStart);
+		fade *= mix(1.0, sampleFade, noise * (1.0 - cloud));
+		noise *= step(xzNormalizedDistance, fadeEnd);
 
-		noise *= pow(InvLerp(xzNormalizedDistance, 512.0, 32.0), 12.0);
+		cloudLighting = mix(cloudLighting, sampleLighting, noise * (1.0 - cloud * cloud));
+		
 		if (z < 1.0) {
 			noise *= InvLerp(sampleTotalLength, viewLengthSoftMax, viewLengthSoftMin);
 		}
 
-		if (closestLength == maxClosestLength && noise > closestLengthThreshold) {
-			closestLength = sampleTotalLength;
-		}
+		cloud = mix(cloud, 1.0, noise);
 
-		cloudFaded = mix(cloudFaded, 1.0, noise);
+		if (cloudViewLength == maxcloudViewLength && cloud > 0.5) {
+			cloudViewLength = sampleTotalLength;
+		}
 		
 		samplePos += sampleStep;
 		sampleTotalLength += sampleLength;
 	}
+
+	cloudFaded = cloud * fade;
+
 	cloudLighting = mix(cloudLighting, 1.0, (1.0 - cloud * cloud) * scattering * 0.5);
+	cloudLighting *= (1.0 - 0.9 * rainStrength);
 	
 	vec3 cloudColor = mix(
-		ambientCol * (0.35 * sunVisibility + 0.5),
+		ambientCol * (0.3 * sunVisibility + 0.5),
 		lightCol * (0.85 + 1.15 * scattering),
 		cloudLighting
 	);
-	cloudColor *= 1.0 - 0.6 * rainStrength;
+
+	cloudColor *= 1.0 - 0.4 * rainStrength;
 	cloudColor *= CLOUD_BRIGHTNESS * (0.5 - 0.25 * (1.0 - sunVisibility) * (1.0 - rainStrength));
 
-	cloudFaded *= 1.0 - 0.6 * rainStrength;
 	cloudFaded *= cloudFaded * CLOUD_OPACITY;
+
+	if (cloudFaded < dither) {
+		cloudViewLength = maxcloudViewLength;
+	}
 
 	return vec4(cloudColor, cloudFaded);
 }
@@ -247,13 +273,14 @@ float GetNoise(vec2 pos) {
 }
 
 void DrawStars(inout vec3 color, vec3 viewPos) {
-	vec3 wpos = vec3(gbufferModelViewInverse * vec4(viewPos, 1.0));
+	vec3 wpos = vec3(gbufferModelViewInverse * vec4(viewPos * 100.0, 1.0));
 	vec3 planeCoord = wpos / (wpos.y + length(wpos.xz));
 	vec2 wind = vec2(frametime, 0.0);
 	vec2 coord = planeCoord.xz * 0.4 + cameraPosition.xz * 0.0001 + wind * 0.00125;
 	coord = floor(coord * 1024.0) / 1024.0;
 	
 	float VoU = clamp(dot(normalize(viewPos), upVec), 0.0, 1.0);
+	float VoL = dot(normalize(viewPos), sunVec);
 	float multiplier = sqrt(sqrt(VoU)) * 5.0 * (1.0 - rainStrength) * moonVisibility;
 	
 	float star = 1.0;
@@ -273,6 +300,9 @@ void DrawStars(inout vec3 color, vec3 viewPos) {
 	#ifdef UNDERGROUND_SKY
 	star *= mix(clamp((cameraPosition.y - 48.0) / 16.0, 0.0, 1.0), 1.0, eBS);
 	#endif
+
+	float moonFade = smoothstep(-0.997,-0.992, VoL);
+	star *= moonFade;
 		
 	color += star * pow(lightNight, vec3(0.8));
 }
@@ -291,7 +321,11 @@ float AuroraSample(vec2 coord, vec2 wind, float VoU) {
 
 vec3 DrawAurora(vec3 viewPos, float dither, int samples) {
 	#ifdef TAA
+	#if TAA_MODE == 0
 	dither = fract(dither + frameCounter * 0.618);
+	#else
+	dither = fract(dither + frameCounter * 0.5);
+	#endif
 	#endif
 	
 	float sampleStep = 1.0 / samples;

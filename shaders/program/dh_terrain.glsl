@@ -10,6 +10,8 @@ https://bitslablab.com
 #ifdef FSH
 
 //Varyings//
+varying float mat;
+
 varying vec2 texCoord, lmCoord;
 
 varying vec3 normal;
@@ -22,8 +24,9 @@ uniform int frameCounter;
 uniform int isEyeInWater;
 uniform int worldTime;
 
+uniform float far;
 uniform float frameTimeCounter;
-uniform float nightVision;
+uniform float blindFactor, darknessFactor, nightVision;
 uniform float rainStrength;
 uniform float screenBrightness; 
 uniform float shadowFade;
@@ -34,23 +37,12 @@ uniform ivec2 eyeBrightnessSmooth;
 
 uniform vec3 cameraPosition;
 
-uniform mat4 gbufferProjectionInverse;
+uniform mat4 dhProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 shadowProjection;
 uniform mat4 shadowModelView;
 
-#ifdef DYNAMIC_HANDLIGHT
-uniform int heldBlockLightValue;
-uniform int heldBlockLightValue2;
-#endif
-
-#ifdef MULTICOLORED_BLOCKLIGHT
-uniform mat4 gbufferPreviousModelView;
-uniform mat4 gbufferPreviousProjection;
-uniform vec3 previousCameraPosition;
-
-uniform sampler2D colortex9;
-#endif
+uniform sampler2D noisetex;
 
 //Common Variables//
 float eBS = eyeBrightnessSmooth.y / 240.0;
@@ -63,34 +55,73 @@ float frametime = float(worldTime) * 0.05 * ANIMATION_SPEED;
 float frametime = frameTimeCounter * ANIMATION_SPEED;
 #endif
 
+#ifdef ADVANCED_MATERIALS
+vec2 dcdx = dFdx(texCoord);
+vec2 dcdy = dFdy(texCoord);
+#endif
+
 vec3 lightVec = sunVec * ((timeAngle < 0.5325 || timeAngle > 0.9675) ? 1.0 : -1.0);
+
+mat4 gbufferProjectionInverse = dhProjectionInverse;
 
 //Common Functions//
 float GetLuminance(vec3 color) {
 	return dot(color,vec3(0.299, 0.587, 0.114));
 }
 
+float GetBlueNoise3D(vec3 pos, vec3 normal) {
+	pos = (floor(pos + 0.01) + 0.5) / 512.0;
+
+	vec3 worldNormal = (gbufferModelViewInverse * vec4(normal, 0.0)).xyz;
+	vec3 noise3D = vec3(
+		texture2D(noisetex, pos.yz).b,
+		texture2D(noisetex, pos.xz).b,
+		texture2D(noisetex, pos.xy).b
+	);
+
+	float noiseX = noise3D.x * abs(worldNormal.x);
+	float noiseY = noise3D.y * abs(worldNormal.y);
+	float noiseZ = noise3D.z * abs(worldNormal.z);
+	float noise = noiseX + noiseY + noiseZ;
+
+	return noise - 0.5;
+}
+
 //Includes//
 #include "/lib/color/blocklightColor.glsl"
 #include "/lib/color/dimensionColor.glsl"
+#include "/lib/color/specularColor.glsl"
+#include "/lib/util/dither.glsl"
 #include "/lib/util/spaceConversion.glsl"
 #include "/lib/lighting/forwardLighting.glsl"
+#include "/lib/surface/ggx.glsl"
 
 #ifdef TAA
 #include "/lib/util/jitter.glsl"
 #endif
 
-#ifdef MULTICOLORED_BLOCKLIGHT
-#include "/lib/lighting/coloredBlocklight.glsl"
-#endif
-
 //Program//
 void main() {
     vec4 albedo = color;
+	vec3 newNormal = normal;
 
 	if (albedo.a > 0.001) {
 		vec2 lightmap = clamp(lmCoord, vec2(0.0), vec2(1.0));
+		
+		float foliage  = float(mat > 0.98 && mat < 1.02);
+		float leaves   = float(mat > 1.98 && mat < 2.02);
+		float emissive = float(mat > 2.98 && mat < 3.02);
+		float lava     = float(mat > 3.98 && mat < 4.02);
+		float candle   = float(mat > 4.98 && mat < 5.02);
 
+		float metalness       = 0.0;
+		float emission        = emissive + lava;
+		float subsurface      = 0.0;
+		float basicSubsurface = leaves * 0.5;
+		vec3 baseReflectance  = vec3(0.04);
+		
+		emission *= pow(max(max(albedo.r, albedo.g), albedo.b), 4.0) * 0.4;
+		
 		vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z);
 		#ifdef TAA
 		vec3 viewPos = ToNDC(vec3(TAAJitter(screenPos.xy, -0.5), screenPos.z));
@@ -98,66 +129,57 @@ void main() {
 		vec3 viewPos = ToNDC(screenPos);
 		#endif
 		vec3 worldPos = ToWorld(viewPos);
-		
-		#ifdef DYNAMIC_HANDLIGHT
-		float heldLightValue = max(float(heldBlockLightValue), float(heldBlockLightValue2));
-		float handlight = clamp((heldLightValue - 2.0 * length(viewPos)) / 15.0, 0.0, 0.9333);
-		lightmap.x = max(lightmap.x, handlight);
-		#endif
+
+		float dither = Bayer8(gl_FragCoord.xy);
+
+		float viewLength = length(viewPos);
+		float minDist = (dither - 1.0) * 16.0 + far;
+		if (viewLength < minDist) {
+			discard;
+		}
+
+		vec3 noisePos = (worldPos + cameraPosition) * 4.0;
+		float albedoLuma = GetLuminance(albedo.rgb);
+		float noiseAmount = (1.0 - albedoLuma * albedoLuma) * 0.05;
+		float albedoNoise = GetBlueNoise3D(noisePos, normal);
+		albedo.rgb = clamp(albedo.rgb + albedoNoise * noiseAmount, vec3(0.0), vec3(1.0));
+		// albedo.rgb = vec3(albedoNoise + 0.5);
 
 		#ifdef TOON_LIGHTMAP
-		lightmap = floor(lmCoord * 14.999 * (0.75 + 0.25 * color.a)) / 14.0;
+		lightmap = floor(lmCoord * 14.999) / 14.0;
 		lightmap = clamp(lightmap, vec2(0.0), vec2(1.0));
 		#endif
 
     	albedo.rgb = pow(albedo.rgb, vec3(2.2));
-		albedo.a = albedo.a * 0.5 + 0.5;
 
 		#ifdef WHITE_WORLD
-		if (albedo.a > 0.9) albedo.rgb = vec3(0.35);
+		albedo.rgb = vec3(0.35);
 		#endif
+		
+		vec3 outNormal = newNormal;
+		
+		float NoL = clamp(dot(newNormal, lightVec), 0.0, 1.0);
 
-		float NoL = clamp(dot(normal, lightVec) * 1.01 - 0.01, 0.0, 1.0);
-
-		float NoU = clamp(dot(normal, upVec), -1.0, 1.0);
-		float NoE = clamp(dot(normal, eastVec), -1.0, 1.0);
+		float NoU = clamp(dot(newNormal, upVec), -1.0, 1.0);
+		float NoE = clamp(dot(newNormal, eastVec), -1.0, 1.0);
 		float vanillaDiffuse = (0.25 * NoU + 0.75) + (0.667 - abs(NoE)) * (1.0 - abs(NoU)) * 0.15;
 			  vanillaDiffuse*= vanillaDiffuse;
-
-		#ifdef MULTICOLORED_BLOCKLIGHT
-		blocklightCol = ApplyMultiColoredBlocklight(blocklightCol, screenPos);
+		
+		#ifndef NORMAL_PLANTS
+		if (foliage > 0.5) vanillaDiffuse *= 1.8;
 		#endif
 		
 		vec3 shadow = vec3(0.0);
 		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, 1.0, NoL, 
-					vanillaDiffuse, 1.0, 0.0, 0.0, 0.0);
+					vanillaDiffuse, 1.0, emission, subsurface, basicSubsurface);
 
 		#if ALPHA_BLEND == 0
 		albedo.rgb = sqrt(max(albedo.rgb, vec3(0.0)));
 		#endif
-	}
+	} else albedo.a = 0.0;
 
     /* DRAWBUFFERS:0 */
     gl_FragData[0] = albedo;
-
-	#ifdef MULTICOLORED_BLOCKLIGHT
-	    /* DRAWBUFFERS:08 */
-		gl_FragData[1] = vec4(0.0,0.0,0.0,1.0);
-
-		#ifdef ADVANCED_MATERIALS
-		/* DRAWBUFFERS:08367 */
-		gl_FragData[2] = vec4(0.0, 0.0, 0.0, 1.0);
-		gl_FragData[3] = vec4(0.0, 0.0, float(gl_FragCoord.z < 1.0), 1.0);
-		gl_FragData[4] = vec4(0.0, 0.0, 0.0, 1.0);
-		#endif
-	#else
-		#ifdef ADVANCED_MATERIALS
-		/* DRAWBUFFERS:0367 */
-		gl_FragData[1] = vec4(0.0, 0.0, 0.0, 1.0);
-		gl_FragData[2] = vec4(0.0, 0.0, float(gl_FragCoord.z < 1.0), 1.0);
-		gl_FragData[3] = vec4(0.0, 0.0, 0.0, 1.0);
-		#endif
-	#endif
 }
 
 #endif
@@ -166,6 +188,8 @@ void main() {
 #ifdef VSH
 
 //Varyings//
+varying float mat;
+
 varying vec2 texCoord, lmCoord;
 
 varying vec3 normal;
@@ -181,8 +205,8 @@ uniform float timeAngle;
 
 uniform vec3 cameraPosition;
 
+uniform mat4 dhProjection;
 uniform mat4 gbufferModelView, gbufferModelViewInverse;
-uniform mat4 gbufferProjectionInverse;
 
 #ifdef TAA
 uniform int frameCounter;
@@ -202,6 +226,8 @@ float frametime = frameTimeCounter * ANIMATION_SPEED;
 #endif
 
 //Includes//
+#include "/lib/vertex/waving.glsl"
+
 #ifdef TAA
 #include "/lib/util/jitter.glsl"
 #endif
@@ -217,9 +243,24 @@ void main() {
 	lmCoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
 	lmCoord = clamp((lmCoord - 0.03125) * 1.06667, vec2(0.0), vec2(0.9333, 1.0));
 
+	int blockID = dhMaterialId;
+
 	normal = normalize(gl_NormalMatrix * gl_Normal);
     
 	color = gl_Color;
+	
+	mat = 0.0;
+
+	if (blockID == DH_BLOCK_LEAVES){
+		mat = 2.0;
+		color.rgb *= 1.225;
+	}
+	if (blockID == DH_BLOCK_ILLUMINATED)
+		mat = 3.0;
+	if (blockID == DH_BLOCK_LAVA) {
+		mat = 4.0;
+		lmCoord.x += 0.0667;
+	}
 
 	const vec2 sunRotationData = vec2(cos(sunPathRotation * 0.01745329251994), -sin(sunPathRotation * 0.01745329251994));
 	float ang = fract(timeAngle - 0.25);
@@ -229,13 +270,13 @@ void main() {
 	upVec = normalize(gbufferModelView[1].xyz);
 	eastVec = normalize(gbufferModelView[0].xyz);
 
+	vec4 position = gbufferModelViewInverse * gl_ModelViewMatrix * gl_Vertex;
+
     #ifdef WORLD_CURVATURE
-	vec4 position = gbufferModelViewInverse * gbufferProjectionInverse * ftransform();
 	position.y -= WorldCurvature(position.xz);
-	gl_Position = gl_ProjectionMatrix * gbufferModelView * position;
-	#else
-	gl_Position = ftransform();
     #endif
+
+	gl_Position = dhProjection * gbufferModelView * position;
 	
 	#ifdef TAA
 	gl_Position.xy = TAAJitter(gl_Position.xy, gl_Position.w);

@@ -1,9 +1,17 @@
 float GetOutlineMask() {
-	float ph = ceil(viewHeight / 720.0) * 0.5 / viewHeight;
+	float ph = ceil(viewHeight / 1440.0) / viewHeight;
 	float pw = ph / aspectRatio;
 
+    int sampleCount = viewHeight >= 720.0 ? 12 : 4;
+	
+    #ifdef RETRO_FILTER
+    ph = RETRO_FILTER_SIZE / viewHeight;
+    pw = ph / aspectRatio;
+    sampleCount = 4;
+    #endif
+
 	float mask = 0.0;
-	for (int i = 0; i < 12; i++) {
+	for (int i = 0; i < sampleCount; i++) {
 		vec2 offset = vec2(pw, ph) * outlineOffsets[i];
         for (int j = 0; j < 2; j++){
 		    mask += float(texture2D(depthtex0, texCoord + offset).r <

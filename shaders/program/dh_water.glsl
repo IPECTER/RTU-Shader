@@ -21,16 +21,13 @@ varying vec3 viewVector;
 
 varying vec4 color;
 
-#ifdef ADVANCED_MATERIALS
-varying vec4 vTexCoord, vTexCoordAM;
-#endif
-
 //Uniforms//
 uniform int frameCounter;
 uniform int isEyeInWater;
 uniform int worldTime;
 
 uniform float blindFactor, darknessFactor, nightVision;
+uniform float dhFarPlane;
 uniform float far, near;
 uniform float frameTimeCounter;
 uniform float rainStrength;
@@ -43,7 +40,7 @@ uniform ivec2 eyeBrightnessSmooth;
 
 uniform vec3 cameraPosition, previousCameraPosition;
 
-uniform mat4 gbufferProjection, gbufferPreviousProjection, gbufferProjectionInverse;
+uniform mat4 dhProjection, dhPreviousProjection, dhProjectionInverse;
 uniform mat4 gbufferModelView, gbufferPreviousModelView, gbufferModelViewInverse;
 uniform mat4 shadowProjection;
 uniform mat4 shadowModelView;
@@ -54,33 +51,8 @@ uniform sampler2D depthtex1;
 uniform sampler2D depthtex2;
 uniform sampler2D noisetex;
 
-#ifdef ADVANCED_MATERIALS
-uniform ivec2 atlasSize;
-
-uniform sampler2D specular;
-uniform sampler2D normals;
-
-#ifdef REFLECTION_RAIN
-uniform float wetness;
-#endif
-#endif
-
-#ifdef DYNAMIC_HANDLIGHT
-uniform int heldBlockLightValue;
-uniform int heldBlockLightValue2;
-#endif
-
-#ifdef MULTICOLORED_BLOCKLIGHT
-uniform sampler2D colortex8;
-uniform sampler2D colortex9;
-#endif
-
 #if CLOUDS == 2
 uniform sampler2D gaux1;
-#endif
-
-#ifdef DISTANT_HORIZONS
-uniform float dhFarPlane;
 #endif
 
 //Common Variables//
@@ -100,6 +72,10 @@ vec2 dcdy = dFdy(texCoord);
 #endif
 
 vec3 lightVec = sunVec * ((timeAngle < 0.5325 || timeAngle > 0.9675) ? 1.0 : -1.0);
+
+mat4 gbufferProjection = dhProjection;
+mat4 gbufferPreviousProjection = dhPreviousProjection;
+mat4 gbufferProjectionInverse = dhProjectionInverse;
 
 //Common Functions//
 float GetLuminance(vec3 color) {
@@ -191,41 +167,17 @@ vec3 GetWaterNormal(vec3 worldPos, vec3 viewPos, vec3 viewVector) {
 #include "/lib/util/jitter.glsl"
 #endif
 
-#ifdef ADVANCED_MATERIALS
-#include "/lib/reflections/complexFresnel.glsl"
-#include "/lib/surface/directionalLightmap.glsl"
-#include "/lib/surface/materialGbuffers.glsl"
-#include "/lib/surface/parallax.glsl"
-
-#ifdef REFLECTION_RAIN
-#include "/lib/reflections/rainPuddles.glsl"
-#endif
-#endif
-
-#ifdef MULTICOLORED_BLOCKLIGHT
-#include "/lib/lighting/coloredBlocklight.glsl"
-#endif
-
 //Program//
 void main() {
-    vec4 albedo = texture2D(texture, texCoord) * vec4(color.rgb, 1.0);
+	vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z);
+
+	float opaqueDepth = texture2D(depthtex1, screenPos.xy).r;
+	if (opaqueDepth < 1.0) discard;
+
+    vec4 albedo = color;
 	vec3 newNormal = normal;
 	float smoothness = 0.0;
 	vec3 lightAlbedo = vec3(0.0);
-	
-	#ifdef ADVANCED_MATERIALS
-	vec2 newCoord = vTexCoord.st * vTexCoordAM.pq + vTexCoordAM.st;
-	float surfaceDepth = 1.0;
-	float parallaxFade = clamp((dist - PARALLAX_DISTANCE) / 32.0, 0.0, 1.0);
-	float skipAdvMat = float(mat > 0.98 && mat < 1.02);
-	
-	#ifdef PARALLAX
-	if(skipAdvMat < 0.5) {
-		newCoord = GetParallaxCoord(texCoord, parallaxFade, surfaceDepth);
-		albedo = texture2DGradARB(texture, newCoord, dcdx, dcdy) * vec4(color.rgb, 1.0);
-	}
-	#endif
-	#endif
 
 	vec3 vlAlbedo = vec3(1.0);
 	vec3 refraction = vec3(0.0);
@@ -253,7 +205,6 @@ void main() {
 		translucent = 0.0;
 		#endif
 
-		vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z);
 		#ifdef TAA
 		vec3 viewPos = ToNDC(vec3(TAAJitter(screenPos.xy, -0.5), screenPos.z));
 		#else
@@ -262,11 +213,21 @@ void main() {
 		vec3 worldPos = ToWorld(viewPos);
 
 		float dither = Bayer8(gl_FragCoord.xy);
+		
+		float viewLength = length(viewPos);
+		float minDist = (dither - 1.0) * 16.0 + far;
+		if (viewLength < minDist) {
+			discard;
+		}
 
 		#if CLOUDS == 2
-		float cloudViewLength = texture2D(gaux1, screenPos.xy).r * (far * 2.0);
+		float cloudMaxDistance = 2.0 * far;
+		#ifdef DISTANT_HORIZONS
+		cloudMaxDistance = max(cloudMaxDistance, dhFarPlane);
+		#endif
 
-		float viewLength = length(viewPos);
+		float cloudViewLength = texture2D(gaux1, screenPos.xy).r * cloudMaxDistance;
+
 		cloudBlendOpacity = step(viewLength, cloudViewLength);
 
 		if (cloudBlendOpacity == 0) {
@@ -288,52 +249,20 @@ void main() {
 		}
 		#endif
 
-		#ifdef ADVANCED_MATERIALS
-		float f0 = 0.0, porosity = 0.5, ao = 1.0, skyOcclusion = 0.0;
-		if (water < 0.5) {
-			GetMaterials(smoothness, metalness, f0, emission, subsurface, porosity, ao, normalMap,
-						 newCoord, dcdx, dcdy);
-
-			if ((normalMap.x > -0.999 || normalMap.y > -0.999) && viewVector == viewVector)
-				newNormal = clamp(normalize(normalMap * tbnMatrix), vec3(-1.0), vec3(1.0));
-		}
-		#endif
-
 		#if REFRACTION == 1
 		refraction = vec3((newNormal.xy - normal.xy) * 0.5 + 0.5, float(albedo.a < 0.95) * water);
 		#elif REFRACTION == 2
 		refraction = vec3((newNormal.xy - normal.xy) * 0.5 + 0.5, float(albedo.a < 0.95));
 		#endif
-		
-		#ifdef DYNAMIC_HANDLIGHT
-		float heldLightValue = max(float(heldBlockLightValue), float(heldBlockLightValue2));
-		float handlight = clamp((heldLightValue - 2.0 * length(viewPos)) / 15.0, 0.0, 0.9333);
-		lightmap.x = max(lightmap.x, handlight);
-		#endif
 
 		#ifdef TOON_LIGHTMAP
-		lightmap = floor(lmCoord * 14.999 * (0.75 + 0.25 * color.a)) / 14.0;
+		lightmap = floor(lmCoord * 14.999) / 14.0;
 		lightmap = clamp(lightmap, vec2(0.0), vec2(1.0));
 		#endif
 
     	albedo.rgb = pow(albedo.rgb, vec3(2.2));
 		
 		vlAlbedo = albedo.rgb;
-
-		#ifdef MULTICOLORED_BLOCKLIGHT
-		vec3 opaquelightAlbedo = texture2D(colortex8, screenPos.xy).rgb;
-		if (water < 0.5) {
-			opaquelightAlbedo *= vlAlbedo;
-		}
-		lightAlbedo = albedo.rgb + 0.00001;
-
-		if (portal > 0.5) {
-			lightAlbedo = lightAlbedo * 0.95 + 0.05;
-		}
-
-		lightAlbedo = normalize(lightAlbedo + 0.00001) * emission;
-		lightAlbedo = mix(opaquelightAlbedo, sqrt(lightAlbedo), albedo.a);
-		#endif
 
 		#ifdef WHITE_WORLD
 		albedo.rgb = vec3(0.35);
@@ -365,59 +294,10 @@ void main() {
 		float NoE = clamp(dot(newNormal, eastVec), -1.0, 1.0);
 		float vanillaDiffuse = (0.25 * NoU + 0.75) + (0.667 - abs(NoE)) * (1.0 - abs(NoU)) * 0.15;
 			  vanillaDiffuse*= vanillaDiffuse;
-
-		float parallaxShadow = 1.0;
-		#ifdef ADVANCED_MATERIALS
-		vec3 rawAlbedo = albedo.rgb * 0.999 + 0.001;
-		albedo.rgb *= ao;
-
-		#ifdef REFLECTION_SPECULAR
-		albedo.rgb *= 1.0 - metalness * smoothness;
-		#endif
-		
-		#ifdef SELF_SHADOW
-		if (lightmap.y > 0.0 && NoL > 0.0 && water < 0.5) {
-			parallaxShadow = GetParallaxShadow(surfaceDepth, parallaxFade, newCoord, lightVec,
-											   tbnMatrix);
-		}
-		#endif
-
-		#ifdef DIRECTIONAL_LIGHTMAP
-		mat3 lightmapTBN = GetLightmapTBN(viewPos);
-		lightmap.x = DirectionalLightmap(lightmap.x, lmCoord.x, newNormal, lightmapTBN);
-		lightmap.y = DirectionalLightmap(lightmap.y, lmCoord.y, newNormal, lightmapTBN);
-		#endif
-		#endif
-
-		#ifdef MULTICOLORED_BLOCKLIGHT
-		blocklightCol = ApplyMultiColoredBlocklight(blocklightCol, screenPos);
-		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, 1.0, NoL, 
-					vanillaDiffuse, parallaxShadow, emission, subsurface, basicSubsurface);
-
-		#ifdef ADVANCED_MATERIALS
-		float puddles = 0.0;
-		#ifdef REFLECTION_RAIN	
-		if (water < 0.5) {
-			puddles = GetPuddles(worldPos, newCoord, NoU, lightmap.y, wetness);
-		}
-
-		ApplyPuddleToMaterial(puddles, albedo, smoothness, f0, porosity);
-
-		if (puddles > 0.001 && rainStrength > 0.001) {
-			mat3 tbnMatrix = mat3(tangent.x, binormal.x, normal.x,
-							  tangent.y, binormal.y, normal.y,
-							  tangent.z, binormal.z, normal.z);
-
-			vec3 puddleNormal = GetPuddleNormal(worldPos, viewPos, tbnMatrix);
-			newNormal = normalize(
-				mix(newNormal, puddleNormal, puddles * sqrt(1.0 - porosity) * rainStrength)
-			);
-		}
-		#endif
-		#endif
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, color.a, NoL, 
+					vanillaDiffuse, 1.0, emission, subsurface, basicSubsurface);
 		
 		float fresnel = pow(clamp(1.0 + dot(newNormal, normalize(viewPos)), 0.0, 1.0), 5.0);
 
@@ -432,7 +312,7 @@ void main() {
 			// fresnel = 1.0;
 			
 			#if REFLECTION == 2
-			reflection = SimpleReflection(viewPos, newNormal, dither, reflectionMask);
+			reflection = DHReflection(viewPos, newNormal, dither, reflectionMask);
 			reflection.rgb = pow(reflection.rgb * 2.0, vec3(8.0));
 			#endif
 			
@@ -499,93 +379,6 @@ void main() {
 			albedo.rgb = mix(albedo.rgb, reflection.rgb, fresnel);
 			albedo.a = mix(albedo.a, 1.0, fresnel);
 			#endif
-		}else{
-			#ifdef ADVANCED_MATERIALS
-			skyOcclusion = lightmap.y;
-			#if REFLECTION_SKY_FALLOFF > 1
-			skyOcclusion = clamp(1.0 - (1.0 - skyOcclusion) * REFLECTION_SKY_FALLOFF, 0.0, 1.0);
-			#endif
-			skyOcclusion *= skyOcclusion;
-
-			baseReflectance = mix(vec3(f0), rawAlbedo, metalness);
-
-			#ifdef REFLECTION_SPECULAR
-			vec3 fresnel3 = mix(baseReflectance, vec3(1.0), fresnel);
-			#if MATERIAL_FORMAT == 0
-			if (f0 >= 0.9 && f0 < 1.0) {
-				baseReflectance = GetMetalCol(f0);
-				fresnel3 = ComplexFresnel(pow(fresnel, 0.2), f0);
-				#ifdef ALBEDO_METAL
-				fresnel3 *= rawAlbedo;
-				#endif
-			}
-			#endif
-			
-			float aoSquared = ao * ao;
-			shadow *= aoSquared; fresnel3 *= aoSquared * smoothness * smoothness;
-
-			if (smoothness > 0.0) {
-				vec4 reflection = vec4(0.0);
-				vec3 skyReflection = vec3(0.0);
-				float reflectionMask = 0.0;
-				
-				float ssrMask = clamp(length(fresnel3) * 400.0 - 1.0, 0.0, 1.0);
-				if(ssrMask > 0.0) reflection = SimpleReflection(viewPos, newNormal, dither, reflectionMask);
-				reflection.rgb = pow(reflection.rgb * 2.0, vec3(8.0));
-				reflection.a *= ssrMask;
-
-				if (reflection.a < 1.0) {
-					#ifdef OVERWORLD
-					vec3 skyRefPos = reflect(normalize(viewPos.xyz), newNormal);
-					skyReflection = GetSkyColor(skyRefPos, true);
-					
-					#ifdef AURORA
-					skyReflection += DrawAurora(skyRefPos * 100.0, dither, 12);
-					#endif
-					
-					#if CLOUDS == 1
-					vec4 cloud = DrawCloudSkybox(skyRefPos * 100.0, 1.0, dither, lightCol, ambientCol, false);
-					skyReflection = mix(skyReflection, cloud.rgb, cloud.a);
-					#endif
-					#if CLOUDS == 2
-					vec3 cameraPos = GetReflectedCameraPos(worldPos, newNormal);
-					float cloudViewLength = 0.0;
-
-					vec4 cloud = DrawCloudVolumetric(skyRefPos * 8192.0, cameraPos, 1.0, dither, lightCol, ambientCol, cloudViewLength, true);
-					skyReflection = mix(skyReflection, cloud.rgb, cloud.a);
-					#endif
-
-					#ifdef CLASSIC_EXPOSURE
-					skyReflection *= 4.0 - 3.0 * eBS;
-					#endif
-
-					skyReflection = mix(vanillaDiffuse * minLightCol, skyReflection, skyOcclusion);
-					#endif
-
-					#ifdef NETHER
-					skyReflection = netherCol.rgb * 0.04;
-					#endif
-
-					#ifdef END
-					skyReflection = endCol.rgb * 0.01;
-					#endif
-				}
-
-				reflection.rgb = max(mix(skyReflection, reflection.rgb, reflectionMask), vec3(0.0));
-
-				albedo.rgb = albedo.rgb * (1.0 - fresnel3 * (1.0 - metalness)) +
-							 reflection.rgb * fresnel3;
-				albedo.a = mix(albedo.a, 1.0, GetLuminance(fresnel3));
-			}
-			#endif
-			#endif
-
-			#if defined OVERWORLD || defined END
-			vec3 specularColor = GetSpecularColor(lightmap.y, metalness, baseReflectance);
-
-			albedo.rgb += GetSpecularHighlight(newNormal, viewPos, smoothness, baseReflectance,
-										   	   specularColor, shadow * vanillaDiffuse, color.a);
-			#endif
 		}
 
 		#if WATER_FOG == 1
@@ -614,20 +407,6 @@ void main() {
     /* DRAWBUFFERS:01 */
     gl_FragData[0] = albedo;
 	gl_FragData[1] = vec4(vlAlbedo, 1.0);
-
-	#ifdef MULTICOLORED_BLOCKLIGHT
-		/* DRAWBUFFERS:018 */
-		gl_FragData[2] = vec4(lightAlbedo, 1.0);
-		#if REFRACTION > 0
-		/* DRAWBUFFERS:0186 */
-		gl_FragData[3] = vec4(refraction, 1.0);
-		#endif
-	#else
-		#if REFRACTION > 0
-		/* DRAWBUFFERS:016 */
-		gl_FragData[2] = vec4(refraction, 1.0);
-		#endif
-	#endif
 }
 
 #endif
@@ -646,10 +425,6 @@ varying vec3 sunVec, upVec, eastVec;
 varying vec3 viewVector;
 
 varying vec4 color;
-
-#ifdef ADVANCED_MATERIALS
-varying vec4 vTexCoord, vTexCoordAM;
-#endif
 
 //Uniforms//
 uniform int worldTime;
@@ -707,11 +482,11 @@ void main() {
 	lmCoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
 	lmCoord = clamp((lmCoord - 0.03125) * 1.06667, vec2(0.0), vec2(0.9333, 1.0));
 	
-	int blockID = int(mod(max(mc_Entity.x - 10000, 0), 10000));
+	int blockID = dhMaterialId;
 
 	normal   = normalize(gl_NormalMatrix * gl_Normal);
-	binormal = normalize(gl_NormalMatrix * cross(at_tangent.xyz, gl_Normal.xyz) * at_tangent.w);
-	tangent  = normalize(gl_NormalMatrix * at_tangent.xyz);
+	binormal = normalize(gbufferModelView[2].xyz);
+	tangent  = normalize(gbufferModelView[0].xyz);
 	
 	mat3 tbnMatrix = mat3(tangent.x, binormal.x, normal.x,
 						  tangent.y, binormal.y, normal.y,
@@ -720,27 +495,12 @@ void main() {
 	viewVector = tbnMatrix * (gl_ModelViewMatrix * gl_Vertex).xyz;
 	
 	dist = length(gl_ModelViewMatrix * gl_Vertex);
-
-	#ifdef ADVANCED_MATERIALS
-	vec2 midCoord = (gl_TextureMatrix[0] *  mc_midTexCoord).st;
-	vec2 texMinMidCoord = texCoord - midCoord;
-
-	vTexCoordAM.pq  = abs(texMinMidCoord) * 2;
-	vTexCoordAM.st  = min(texCoord, midCoord - texMinMidCoord);
-	
-	vTexCoord.xy    = sign(texMinMidCoord) * 0.5 + 0.5;
-	#endif
     
 	color = gl_Color;
-
-	if(color.a < 0.1) color.a = 1.0;
 	
 	mat = 0.0;
 	
-	if (blockID == 300 || blockID == 304) mat = 1.0;
-	if (blockID == 301)					  mat = 2.0;
-	if (blockID == 302) 				  mat = 3.0;
-	if (blockID == 303) 				  mat = 4.0;
+	if (blockID == DH_BLOCK_WATER) mat = 1.0;
 
 	const vec2 sunRotationData = vec2(
 		 cos(sunPathRotation * 0.01745329251994),
@@ -751,7 +511,7 @@ void main() {
 	sunVec = normalize((gbufferModelView * vec4(vec3(-sin(ang), cos(ang) * sunRotationData) * 2000.0, 1.0)).xyz);
 
 	upVec = normalize(gbufferModelView[1].xyz);
-	eastVec = normalize(gbufferModelView[0].xyz);
+	eastVec = tangent;
 
 	vec4 position = gbufferModelViewInverse * gl_ModelViewMatrix * gl_Vertex;
 	

@@ -20,6 +20,8 @@ screen.NORMALS=Normals & Parallax
 screen.ATMOSPHERICS=Atmospherics
 screen.SKY=Sky Config
 screen.CLOUDS=Cloud Config
+screen.FOG=Fog Config
+screen.SKYBOX=Skybox Config
 
 screen.WATER=Water
 
@@ -49,6 +51,7 @@ screen.WEATHER_B=Mesa Sandstorm
 screen.WEATHER_S=Swamp Rain
 screen.WEATHER_M=Mushroom Island Rain
 screen.WEATHER_V=Savanna Cloudy
+screen.WEATHER_J=Jungle Rain
 screen.AURORA_COLOR=Aurora Color
 screen.AURORA_L=Low Section Color
 screen.AURORA_H=High Section Color
@@ -74,7 +77,7 @@ screen.EXTRAS=Extras
 screen.ANIMATION=Animations
 
 #Settings
-option.ABOUT=§bRTUShader §fv§64.2§f
+option.ABOUT=§bRTUShader §fv§65.0§f
 option.ABOUT.comment=RTUShader(BSLedit) by 이팩터 / BSL by Capt Tatsu
 value.ABOUT.0=by 이팩터
 
@@ -93,7 +96,7 @@ value.shadowMapResolution.4096=Very High (4096)
 value.shadowMapResolution.8192=Ultra High (8192)
 
 option.shadowDistance=Shadow Distance
-option.shadowDistance.comment=Adsusts shadow distance.
+option.shadowDistance.comment=Adjusts shadow distance.
 
 option.SHADOW_COLOR=Colored Shadow
 option.SHADOW_COLOR.comment=Enables tinted shadow from translucents. §a[+]§rUsed for colored volumetric light shafts. §c[-]§rSlightly higher performance cost when using shadow filtering.
@@ -140,6 +143,11 @@ option.SHADOW_VEGETATION.comment=Enables shadow on grass, crops, and most other 
 option.sunPathRotation=Sun Path Rotation
 option.sunPathRotation.comment=Adjusts sun angle.
 
+option.SHADOW_BIAS=Shadow Bias Mode
+option.SHADOW_BIAS.comment=Determines how shadow mapping bias is done. Light direction mode preserves most shadow edges, but shadows look floaty at a distance. Surface normal mode preserves contact point, but shadows look shorter at a distance.
+value.SHADOW_BIAS.0=Light Direction
+value.SHADOW_BIAS.1=Surface Normal
+
 option.SHADOW_PIXEL=Pixel Locked Shadows
 option.SHADOW_PIXEL.comment=Applies pixelation effect on shadows.
 value.SHADOW_PIXEL.0=OFF
@@ -155,7 +163,7 @@ option.ADVANCED_MATERIALS=Advanced Materials
 option.ADVANCED_MATERIALS.comment=Enables the use of specular and normal mapping which allows for more detail on various things.  §e[*]§rThis option requires a resource pack which contains specular and/or normal maps, disable if none is currently used. §e[*]§rOptions which requires advanced materials are indicated by *, changing these options won't affect the visuals or performance while advanced materials is disabled.
 
 option.MATERIAL_FORMAT=Material Format*
-option.MATERIAL_FORMAT.comment=Determines the specular and normal map format used by the resourcepack. §e[*]§rTexture artists usually tell which format is used in their resourcepack, using the wrong format may give weird results.
+option.MATERIAL_FORMAT.comment=Determines the specular and normal map format used by the resource pack. §e[*]§rTexture artists usually tell which format is used in their resource pack, using the wrong format may give weird results.
 value.MATERIAL_FORMAT.0=SEUS/Old PBR
 value.MATERIAL_FORMAT.1=labPBR 1.3
 
@@ -201,11 +209,19 @@ option.REFLECTION_TRANSLUCENT.comment=Allows reflection to be rendered on transl
 option.REFLECTION_SPECULAR=Specular Reflection*
 option.REFLECTION_SPECULAR.comment=Enables reflection on smooth or metallic surfaces.
 
+option.REFLECTION_ROUGH=Rough Reflection*
+option.REFLECTION_ROUGH.comment=Allows surfaces with lower smoothness to render blurry reflections. §c[-]§rMay contain minor artifacts.
+
 option.REFLECTION_RAIN=Rain Reflection*
 option.REFLECTION_RAIN.comment=Allows surfaces to be wet while raining.  §e[*]§rRequires specular reflection.
 
-option.REFLECTION_ROUGH=Rough Reflection*
-option.REFLECTION_ROUGH.comment=Allows surfaces with lower smoothness to render blurry reflections. §c[-]§rMay contain minor artifacts.
+option.REFLECTION_RAIN_AMOUNT=Puddle Amount
+option.REFLECTION_RAIN_AMOUNT.comment=Adjusts the amount of puddles created while raining.
+value.REFLECTION_RAIN_AMOUNT.0.4=Very Low
+value.REFLECTION_RAIN_AMOUNT.0.5=Low
+value.REFLECTION_RAIN_AMOUNT.0.6=Medium
+value.REFLECTION_RAIN_AMOUNT.0.7=High
+value.REFLECTION_RAIN_AMOUNT.1.0=Very High
 
 option.REFLECTION_PREVIOUS=Previous Frame Reflection
 option.REFLECTION_PREVIOUS.comment=Allows translucents to be reflected by using previous frame information. §c[-]§rMay cause missing reflection on screenshot (caused by screenshot size setting). §c[-]§rIncompatible with some GPUs. §c[-]§rBugged in 1.7.10.
@@ -230,8 +246,8 @@ value.REFLECTION_SKY_FALLOFF.4=Balanced
 value.REFLECTION_SKY_FALLOFF.8=Strong
 value.REFLECTION_SKY_FALLOFF.16=Very Strong
 
-option.REFLECTION_SKYBOX=Allow Skybox
-option.REFLECTION_SKYBOX.comment=Allows resourcepack skybox to be included in reflections. §c[-]§rSkybox is only applied to transparent surfaces.
+option.REFLECTION_SKYBOX=Reflect Skybox
+option.REFLECTION_SKYBOX.comment=Allows resource pack skybox to be included in reflections. §c[-]§rSkybox is only applied to transparent surfaces.
 
 #Normals & Parallax
 option.PARALLAX=Parallax Occlusion Mapping*
@@ -293,32 +309,8 @@ value.CLOUDS.1=Skybox
 value.CLOUDS.2=Volumetric
 value.CLOUDS.3=Vanilla
 
-option.SKY_DESATURATION=Sky Desaturation
-option.SKY_DESATURATION.comment=Reduces saturation while adding some tint to the skybox at night
-
-option.AURORA=Aurora
-option.AURORA.comment=Enables aurora. §a[+]§rThis effect benefits from TAA.
-
-option.ROUND_SUN_MOON=Round Sun & Moon
-option.ROUND_SUN_MOON.comment=Enables shader based sun & moon. §e[*]§rDisable vanilla sun & moon in Video Settings > Details > Sun & Moon on 1.15.2 or below.
-
-option.DISTANT_FADE=Distant Fade
-option.DISTANT_FADE.comment=Fades far chunk borders. §e[*]§rThis option is affected by fog density.
-value.DISTANT_FADE.0=§cOFF
-value.DISTANT_FADE.1=Overworld Only
-value.DISTANT_FADE.2=Nether & End Only
-value.DISTANT_FADE.3=Full
-
-option.DISTANT_FADE_STYLE=Distant Fade Style
-option.DISTANT_FADE_STYLE.comment=Spherical works like vanilla fog. Cylindrical ignores Y axis.
-value.DISTANT_FADE_STYLE.0=Spherical
-value.DISTANT_FADE_STYLE.1=Cylindrical
-
-option.WEATHER_PERBIOME=Per Biome Weather
-option.WEATHER_PERBIOME.comment=Use varied weather color for different biomes. §c[-]§rMay not work under unknown conditions.
-
-option.UNDERGROUND_SKY=Underground Sky Fix
-option.UNDERGROUND_SKY.comment=Hides the sky when the player is in dark area and under sea level (Y: 62). §c[-]§rNot suitable for low superflat worlds.
+option.FOG_DENSITY=Fog Density
+option.FOG_DENSITY.comment=Adjusts fog density. §e[*]§rThis option is ignored in the nether.
 
 option.LIGHT_SHAFT=Light Shafts
 option.LIGHT_SHAFT.comment=Adds volumetric rays from sun / moon. §a[+]§rThis effect benefits from TAA. §e[*]§rRequires realtime shadows. §e[*]§rPerformance depends on Shadowmap Resolution.
@@ -326,8 +318,8 @@ option.LIGHT_SHAFT.comment=Adds volumetric rays from sun / moon. §a[+]§rThis e
 option.LIGHT_SHAFT_STRENGTH=Light Shaft Strength
 option.LIGHT_SHAFT_STRENGTH.comment=Adjusts light shaft strength.
 
-option.FOG_DENSITY=Fog Density
-option.FOG_DENSITY.comment=Adjusts fog density. §e[*]§rThis option is ignored in the nether.
+option.WEATHER_PERBIOME=Per Biome Weather
+option.WEATHER_PERBIOME.comment=Use varied weather color for different biomes. §c[-]§rMay not work under unknown conditions.
 
 option.WEATHER_OPACITY=Weather Opacity
 option.WEATHER_OPACITY.comment=Adjusts weather opacity.
@@ -341,14 +333,24 @@ option.SKY_DENSITY_W=Weather Density
 option.SKY_EXPOSURE_W=Weather Exposure
 option.SKY_HORIZON_N=Near Horizon
 option.SKY_HORIZON_F=Far Horizon
+
+option.SKY_DESATURATION=Sky Desaturation
+option.SKY_DESATURATION.comment=Reduces saturation while adding some tint to the skybox at night
+
 option.SKY_GROUND=Sky Ground
 option.SKY_GROUND.comment=Darkens the bottom part of the sky. §e[*]§rThis option is affected by fog density.
 value.SKY_GROUND.0=§cOFF
 value.SKY_GROUND.1=Reflections Only
 value.SKY_GROUND.2=Full
 
-option.SKYBOX_BRIGHTNESS=Skybox Brightness
-option.SKYBOX_BRIGHTNESS.comment=Adjusts skybox brightness. §e[*]§rSet to 1.00 when subtractive skybox exists.
+option.UNDERGROUND_SKY=Underground Sky Fix
+option.UNDERGROUND_SKY.comment=Hides the sky when the player is in dark area and under sea level (Y: 62). §c[-]§rNot suitable for low superflat worlds.
+
+option.SHADER_END_SKY=Shader End Sky
+option.SHADER_END_SKY.comment=Replaces vanilla/modded end skybox with shader based end skybox.
+
+option.SKY_DEFERRED=Deferred Sky
+option.SKY_DEFERRED.comment=Renders sky after opaque surfaces are drawn instead of at the beginning. §e[*]§rThis affects resource pack sky rendering.
 
 #Cloud Config
 option.CLOUD_BASE=Base Shape
@@ -410,6 +412,75 @@ option.CLOUD_VOLUMETRIC_SCALE.comment=Adjusts volumetric cloud altitude and size
 value.CLOUD_VOLUMETRIC_SCALE.6.0=Old Vanilla
 value.CLOUD_VOLUMETRIC_SCALE.12.4=Vanilla
 value.CLOUD_VOLUMETRIC_SCALE.16.0=Original Skybox
+
+#Fog Config
+option.FOG_DENSITY_NIGHT=Night - Weather Density
+option.FOG_DENSITY_NIGHT.comment=Adjusts fog density multiplier at night and while raining.
+
+option.FOG_DENSITY_WEATHER=Weather Density
+option.FOG_DENSITY_WEATHER.comment=Adjusts fog density multiplier while raining.
+
+option.FOG_DENSITY_COLD=Cold Density
+option.FOG_DENSITY_COLD.comment=Adjusts fog density multiplier while standing on cold biomes. Cold biomes include any biome where snow occurs. §e[*]§rRequires Per Biome Weather.
+
+option.FOG_DENSITY_DRY=Dry Density
+option.FOG_DENSITY_DRY.comment=Adjusts fog density multiplier while standing on dry biomes. Dry biomes include desert, badlands/mesa, and savanna. §e[*]§rRequires Per Biome Weather.
+
+option.FOG_DENSITY_DAMP=Damp Density
+option.FOG_DENSITY_DAMP.comment=Adjusts fog density multiplier while standing on damp biomes. Damp biomes include swamp, mushroom island, and jungle. §e[*]§rRequires Per Biome Weather.
+
+option.FOG_DENSITY_INDOOR=Indoor Density
+option.FOG_DENSITY_INDOOR.comment=Adjusts fog density multiplier while indoors.
+
+option.FOG_DENSITY_DH=Distant Horizons Density
+option.FOG_DENSITY_DH.comment=Adjusts overworld fog density multiplier while Distant Horizons is enabled.
+
+option.FAR_VANILLA_FOG=Far Vanilla Fog
+option.FAR_VANILLA_FOG.comment=Enables vanilla-like fog. §e[*]§rThis option is affected by fog density.
+value.FAR_VANILLA_FOG.0=§cOFF
+value.FAR_VANILLA_FOG.1=Overworld Only
+value.FAR_VANILLA_FOG.2=Nether & End Only
+value.FAR_VANILLA_FOG.3=Full
+
+option.FAR_VANILLA_FOG_STYLE=Far Vanilla Fog Style
+option.FAR_VANILLA_FOG_STYLE.comment=Spherical works like vanilla fog. Cylindrical ignores Y axis.
+value.FAR_VANILLA_FOG_STYLE.0=Spherical
+value.FAR_VANILLA_FOG_STYLE.1=Cylindrical
+
+option.FOG_DENSITY_VANILLA=Vanilla Density
+option.FOG_DENSITY_VANILLA.comment=Adjusts fog density for vanilla fog.
+
+option.FOG_VANILLA_CLOUD=Vanilla Cloud Fog
+option.FOG_VANILLA_CLOUD.comment=Enables fog on vanilla cloud.
+value.FOG_VANILLA_CLOUD.0=§cOFF
+value.FOG_VANILLA_CLOUD.1=Minimal
+value.FOG_VANILLA_CLOUD.2=Reduced
+value.FOG_VANILLA_CLOUD.3=Full
+
+#Skybox Config
+option.ROUND_SUN_MOON=Round Sun & Moon
+option.ROUND_SUN_MOON.comment=Enables shader based sun & moon. §e[*]§rDisable vanilla sun & moon in Video Settings > Details > Sun & Moon on 1.16.4 or below.
+
+option.ROUND_SUN_MOON_SIZE=Sun & Moon Size
+option.ROUND_SUN_MOON_SIZE.comment=Adjusts size for round sun & moon and specular highlight.
+
+option.STARS=Stars
+option.STARS.comment=Enables stars.
+
+option.AURORA=Aurora
+option.AURORA.comment=Enables aurora. §a[+]§rThis effect benefits from TAA.
+
+option.SKYBOX_INTENSITY=Skybox Intensity
+option.SKYBOX_INTENSITY.comment=Adjusts skybox intensity.
+
+option.SKYBOX_OPACITY=Skybox Opacity
+option.SKYBOX_OPACITY.comment=Adjusts skybox opacity. §c[-]§rOnly available for 1.16.5 or above.
+
+option.SUN_INTENSITY=Sun Intensity
+option.SUN_INTENSITY.comment=Adjusts skybox sun intensity. §c[-]§rOnly available for 1.16.5 or above.
+
+option.MOON_INTENSITY=Moon Intensity
+option.MOON_INTENSITY.comment=Adjusts skybox moon intensity. §c[-]§rOnly available for 1.16.5 or above.
 
 #Water
 option.WATER_MODE=Water Texture Mode
@@ -575,6 +646,11 @@ value.FXAA_EDGE_SENSITIVITY.0=Low
 value.FXAA_EDGE_SENSITIVITY.1=Medium
 value.FXAA_EDGE_SENSITIVITY.2=High
 
+option.TAA_MODE=TAA Mode
+option.TAA_MODE.comment=Determines how TAA should be done. Smooth allows some effects to look better at the cost of ghosting. Coarse have less ghosting but barely improves other effects.
+value.TAA_MODE.0=Smooth
+value.TAA_MODE.1=Coarse
+
 option.TAA_SELECTIVE=Selective TAA
 option.TAA_SELECTIVE.comment=Exclude entities, particles, and hand from temporal anti aliasing to reduce ghosting. §c[-]§rExcluded objects will need to rely on FXAA.
 
@@ -642,6 +718,7 @@ option.WATER_G=Green
 option.WATER_B=Blue
 option.WATER_I=Intensity
 option.WATER_A=Alpha
+option.WATER_F=Fog Intensity
 
 option.WEATHER_RR=Red
 option.WEATHER_RG=Green
@@ -677,6 +754,11 @@ option.WEATHER_VR=Red
 option.WEATHER_VG=Green
 option.WEATHER_VB=Blue
 option.WEATHER_VI=Intensity
+
+option.WEATHER_JR=Red
+option.WEATHER_JG=Green
+option.WEATHER_JB=Blue
+option.WEATHER_JI=Intensity
 
 option.AURORA_LR=Red
 option.AURORA_LG=Green
@@ -724,24 +806,36 @@ option.EMISSIVE_RECOLOR.comment=Tints certain emissive blocks with blocklight co
 option.SKY_VANILLA=Vanilla Sky
 option.SKY_VANILLA.comment=Use vanilla sky color.
 
+option.SKY_VANILLA_USE_FOG=Use Vanilla Fog Color
+option.SKY_VANILLA_USE_FOG.comment=Allows vanilla fog color to be used while Vanilla Sky is enabled.
+
 option.NETHER_VANILLA=Vanilla Nether
 option.NETHER_VANILLA.comment=Use vanilla nether color.
 
 #Color Grading & Tonemap
 option.EXPOSURE=Exposure
-option.TonemapExposure.comment=Adjusts overall brightness.
+option.EXPOSURE.comment=Adjusts overall brightness.
+
+option.AUTO_EXPOSURE=Auto Exposure
+option.AUTO_EXPOSURE.comment=Enables automatic adjustment to overall brightness.
+
+option.CLASSIC_EXPOSURE=Classic Exposure
+option.CLASSIC_EXPOSURE.comment=Enables increased exposure when going indoors.
 
 option.COLOR_GRADING=Color Grading
 option.COLOR_GRADING.comment=Enables color grading. §e[*]§rThis option doesn't need to be enabled to change tonemap, saturation, and vibrance sliders.
-
-option.TONEMAP_WHITE_CURVE=Tonemap White Curve
-option.TONEMAP_WHITE_CURVE.comment=Adjusts how quickly the tonemap can reach white.
 
 option.TONEMAP_LOWER_CURVE=Tonemap Lower Curve
 option.TONEMAP_LOWER_CURVE.comment=Adjusts contrast of darker colors.
 
 option.TONEMAP_UPPER_CURVE=Tonemap Upper Curve
 option.TONEMAP_UPPER_CURVE.comment=Adjusts contrast of brighter colors.
+
+option.TONEMAP_WHITE_CURVE=Tonemap White Curve
+option.TONEMAP_WHITE_CURVE.comment=Adjusts how quickly the tonemapped color can reach maximum brightness.
+
+option.TONEMAP_WHITE_PATH=Tonemap White Path
+option.TONEMAP_WHITE_PATH.comment=Adjusts how quickly bright and saturated color turns into white.
 
 option.SATURATION=Saturation
 option.SATURATION.comment=Adjusts saturation of all colors.
@@ -750,12 +844,6 @@ option.VIBRANCE=Vibrance
 option.VIBRANCE.comment=Adjusts saturation of less saturated colors, well saturated colors are less affected.
 
 #More Exposure Config
-option.AUTO_EXPOSURE=Auto Exposure
-option.AUTO_EXPOSURE.comment=Enables automatic adjustment to overall brightness.
-
-option.CLASSIC_EXPOSURE=Classic Exposure
-option.CLASSIC_EXPOSURE.comment=Enables increased exposure when going indoors.
-
 option.AUTO_EXPOSURE_RADIUS=Auto Exposure Radius
 option.AUTO_EXPOSURE_RADIUS.comment=Adjusts how much of the screen being used for exposure calculation.
 value.AUTO_EXPOSURE_RADIUS.0.002=Very Low
@@ -802,7 +890,7 @@ option.CG_TM=Tint Mix Value
 
 #Extras
 option.OUTLINE=Outline
-option.OUTLINE.comment=Enables outline effect.
+option.OUTLINE.comment=Enables outline effect. §c[-]§rBlack, Colored, and 1.12 Update Art are not fully compatible with volumetric clouds.
 value.OUTLINE.0=OFF
 value.OUTLINE.1=Black
 value.OUTLINE.2=Colored
@@ -813,7 +901,10 @@ option.TOON_LIGHTMAP=Toon Lightmap
 option.TOON_LIGHTMAP.comment=Reduces the quality of vanilla lighting for cel shading. §e[*]§rThis option is known for making the game "look bad", only enable this when needed.
 
 option.RETRO_FILTER=Retro Filter
-option.RETRO_FILTER.comment=Adds pixelation and dithering. §e[*]§rLower render quality for stronger pixelation. §c[-]§rIncompatible with anti-aliasing.
+option.RETRO_FILTER.comment=Adds pixelation and dithering. §c[-]§rIncompatible with anti-aliasing.
+
+option.RETRO_FILTER_SIZE=Retro Filter Size
+option.RETRO_FILTER_SIZE.comment=Adjusts pixel size for retro filter.
 
 option.WORLD_CURVATURE=World Curvature
 option.WORLD_CURVATURE.comment=Enables world curvature. §e[*]§rWorks in overworld only. §c[-]§rMissing chunks are handled by Minecraft itself which I can't fix. §c[-]§rMay break block selection highlight on 1.17.

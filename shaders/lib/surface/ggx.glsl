@@ -1,4 +1,4 @@
-//GGX area light approximation from Horizon Zero Dawn
+//GGX area light approximation from Decima Engine: Advances in Lighting and AA presentation
 float GetNoHSquared(float radiusTan, float NoL, float NoV, float VoL) {
     float radiusCos = 1.0 / sqrt(1.0 + radiusTan * radiusTan);
     
@@ -100,7 +100,7 @@ vec3 GetSpecularHighlight(vec3 normal, vec3 viewPos, float smoothness, vec3 base
     #endif
     
     vec3 specular = GGX(normal, normalize(viewPos), smoothness, baseReflectance,
-                        0.025 * sunVisibility + 0.05);
+                        (0.025 * sunVisibility + 0.05) * ROUND_SUN_MOON_SIZE);
     specular *= shadow * shadowFade * smoothLighting;
     specular *= (1.0 - rainStrength) * (1.0 - rainStrength);
     

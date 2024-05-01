@@ -18,7 +18,7 @@ vec3 GetSkyColor(vec3 viewPos, bool isReflection) {
 
     #if SKY_GROUND > 0
     float groundVoU = clamp(-VoU * 1.015 - 0.015, 0.0, 1.0);
-    float ground = 1.0 - exp(-groundDensity * max(FOG_DENSITY, 0.125) / groundVoU);
+    float ground = 1.0 - exp(-groundDensity * max(fogDensity, 0.125) / groundVoU);
     #if SKY_GROUND == 1
     if (!isReflection) ground = 1.0;
     #endif

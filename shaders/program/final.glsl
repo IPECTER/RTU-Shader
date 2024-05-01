@@ -37,8 +37,8 @@ const float shadowDistanceRenderMul = 1.0;
 
 const int noiseTextureResolution = 512;
 
-const float drynessHalflife = 50.0;
-const float wetnessHalflife = 300.0;
+const float drynessHalflife = 5.0;
+const float wetnessHalflife = 30.0;
 
 //Common Functions//
 #ifdef TAA
@@ -70,8 +70,9 @@ void main() {
     vec2 newTexCoord = texCoord;
 	
 	#ifdef RETRO_FILTER
-    vec2 view = vec2(viewWidth, viewHeight) * 0.5;
-	newTexCoord = floor(newTexCoord * view) / view;
+    vec2 view = vec2(viewWidth, viewHeight) / float(RETRO_FILTER_SIZE);
+	float offset = (ceil(RETRO_FILTER_SIZE * 0.5) - 0.5) / float(RETRO_FILTER_SIZE);
+	newTexCoord = (floor(newTexCoord * view) + offset) / view;
 	#endif
 
 	vec3 color = texture2DLod(colortex1, newTexCoord, 0).rgb;

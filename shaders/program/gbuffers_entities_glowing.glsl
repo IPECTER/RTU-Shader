@@ -175,11 +175,11 @@ void main() {
 		vec2 lightmap = clamp(lmCoord, vec2(0.0), vec2(1.0));
 		
 		float metalness      = 0.0;
-		float emission       = float(entityColor.a > 0.05) * 0.125;
+		float emission       = float(entityColor.a > 0.05);
 		float subsurface     = 0.0;
 		vec3 baseReflectance = vec3(0.04);
 		
-		emission *= dot(albedo.rgb, albedo.rgb) * 0.333;
+		emission *= pow(max(max(albedo.r, albedo.g), albedo.b), 4.0) * 0.125;
 
 		#ifndef ENTITY_FLASH
 		emission = 0.0;
@@ -267,8 +267,8 @@ void main() {
 		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, lightmap, 1.0, NoL, vanillaDiffuse,
-				    parallaxShadow, emission, subsurface, 0.0);
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, 1.0, NoL, 
+					vanillaDiffuse, parallaxShadow, emission, subsurface, 0.0);
 
 		#ifdef ADVANCED_MATERIALS
 		skyOcclusion = lightmap.y;

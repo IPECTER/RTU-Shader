@@ -62,6 +62,10 @@ uniform sampler2D colortex8;
 uniform sampler2D colortex9;
 #endif
 
+#ifdef OUTLINE_ENABLED
+uniform sampler2D gaux1;
+#endif
+
 //Optifine Constants//
 const bool colortex5Clear = false;
 
@@ -168,7 +172,9 @@ vec3 GetMultiColoredBlocklight(vec2 coord, float z, float dither) {
 #ifdef OUTLINE_ENABLED
 #include "/lib/color/blocklightColor.glsl"
 #include "/lib/util/outlineOffset.glsl"
+#include "/lib/util/outlineDepth.glsl"
 #include "/lib/util/outlineMask.glsl"
+#include "/lib/atmospherics/weatherDensity.glsl"
 #include "/lib/atmospherics/sky.glsl"
 #include "/lib/atmospherics/fog.glsl"
 #include "/lib/post/outline.glsl"
@@ -232,6 +238,18 @@ void main() {
 		
 		color.rgb = mix(color.rgb, innerOutline.rgb, innerOutline.a);
 	}
+
+	#ifdef OUTLINE_OUTER
+	float outlineZ = z0;
+	DepthOutline(outlineZ, depthtex0);
+	
+	vec4 outlineViewPos = gbufferProjectionInverse * (vec4(texCoord, outlineZ, 1.0) * 2.0 - 1.0);
+	outlineViewPos /= outlineViewPos.w;
+	
+	float outlineViewLength = length(outlineViewPos.xyz);
+	float cloudViewLength = texture2D(gaux1, screenPos.xy).r * (far * 2.0);
+	outerOutline.a *= step(outlineViewLength, cloudViewLength);
+	#endif
 	#endif
 
 	if (isEyeInWater == 1.0) {
@@ -246,7 +264,7 @@ void main() {
 	#endif
 	
 	#ifdef LIGHT_SHAFT
-	float blueNoise = texture2D(noisetex, gl_FragCoord.xy/512.0).b;
+	float blueNoise = texture2D(noisetex, gl_FragCoord.xy / 512.0).b;
 	vec3 vl = GetLightShafts(z0, z1, translucent, blueNoise);
 	#else
 	vec3 vl = vec3(0.0);

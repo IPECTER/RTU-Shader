@@ -165,12 +165,12 @@ void main() {
 		float candle   = float(mat > 4.98 && mat < 5.02);
 
 		float metalness       = 0.0;
-		float emission        = (emissive + candle + lava) * 0.4;
+		float emission        = (emissive + candle + lava);
 		float subsurface      = 0.0;
 		float basicSubsurface = (foliage + candle) * 0.5 + leaves;
 		vec3 baseReflectance  = vec3(0.04);
 		
-		emission *= dot(albedo.rgb, albedo.rgb) * 0.333;
+		emission *= pow(max(max(albedo.r, albedo.g), albedo.b), 4.0) * 0.4;
 		
 		vec3 screenPos = vec3(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z);
 		#ifdef TAA
@@ -217,7 +217,6 @@ void main() {
 			albedo.rgb = pow(blocklightCol * ec / BLOCKLIGHT_I, vec3(2.0));
 			albedo.rgb /= 0.5 * albedo.rgb + 0.5;
 		}
-		#else
 		#endif
 
 		#ifdef MULTICOLORED_BLOCKLIGHT
@@ -269,12 +268,12 @@ void main() {
 
 		float doParallax = 0.0;
 		#ifdef SELF_SHADOW
-		float pNoL = dot(outNormal, lightVec);
+		float parallaxNoL = dot(outNormal, lightVec);
 		#ifdef OVERWORLD
-		doParallax = float(lightmap.y > 0.0 && pNoL > 0.0);
+		doParallax = float(lightmap.y > 0.0 && parallaxNoL > 0.0);
 		#endif
 		#ifdef END
-		doParallax = float(pNoL > 0.0);
+		doParallax = float(parallaxNoL > 0.0);
 		#endif
 		
 		if (doParallax > 0.5 && skipAdvMat < 0.5) {
@@ -295,31 +294,18 @@ void main() {
 		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, lightmap, color.a, NoL, vanillaDiffuse,
-					parallaxShadow, emission, subsurface, basicSubsurface);
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, color.a, NoL, 
+					vanillaDiffuse, parallaxShadow, emission, subsurface, basicSubsurface);
 		
 		#ifdef ADVANCED_MATERIALS
 		float puddles = 0.0;
 		#ifdef REFLECTION_RAIN
-		float pNoU = dot(outNormal, upVec);
-		if(wetness > 0.001) {
-			puddles = GetPuddles(worldPos, newCoord, wetness) * clamp(pNoU, 0.0, 1.0);
-		}
-		
-		#ifdef WEATHER_PERBIOME
-		float weatherweight = isCold + isDesert + isMesa + isSavanna;
-		puddles *= 1.0 - weatherweight;
-		#endif
-		
-		puddles *= clamp(lightmap.y * 32.0 - 31.0, 0.0, 1.0) * (1.0 - lava);
+		float puddlesNoU = dot(outNormal, upVec);
 
-		float ps = sqrt(1.0 - 0.75 * porosity);
-		float pd = (0.5 * porosity + 0.15);	
-		
-		smoothness = mix(smoothness, 1.0, puddles * ps);
-		f0 = max(f0, puddles * 0.02);
+		puddles = GetPuddles(worldPos, newCoord, puddlesNoU, lightmap.y, wetness);
+		puddles *= 1.0 - lava;
 
-		albedo.rgb *= 1.0 - (puddles * pd);
+		ApplyPuddleToMaterial(puddles, albedo, smoothness, f0, porosity);
 
 		if (puddles > 0.001 && rainStrength > 0.001) {
 			mat3 tbnMatrix = mat3(tangent.x, binormal.x, normal.x,
@@ -471,6 +457,8 @@ void main() {
 	lmCoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
 	lmCoord = clamp((lmCoord - 0.03125) * 1.06667, vec2(0.0), vec2(0.9333, 1.0));
 
+	int blockID = int(mod(max(mc_Entity.x - 10000, 0), 10000));
+
 	normal = normalize(gl_NormalMatrix * gl_Normal);
 
 	#ifdef ADVANCED_MATERIALS
@@ -501,27 +489,26 @@ void main() {
 	
 	mat = 0.0; recolor = 0.0;
 
-	if (mc_Entity.x >= 10100 && mc_Entity.x < 10200)
+	if (blockID >= 100 && blockID < 200)
 		mat = 1.0;
-	if (mc_Entity.x == 10105 || mc_Entity.x == 10106){
+	if (blockID == 105 || blockID == 106){
 		mat = 2.0;
 		color.rgb *= 1.225;
 	}
-	if (mc_Entity.x >= 10200 && mc_Entity.x < 10300)
+	if (blockID >= 200 && blockID < 300)
 		mat = 3.0;
-	if (mc_Entity.x == 10203)
+	if (blockID == 203){
 		mat = 4.0;
-	if (mc_Entity.x == 10208)
+		lmCoord.x += 0.0667;
+	}
+	if (blockID == 208)
 		mat = 5.0;
 
-	if (mc_Entity.x == 10201 || mc_Entity.x == 10205 || mc_Entity.x == 10206)
+	if (blockID == 201 || blockID == 205 || blockID == 206)
 		recolor = 1.0;
 
-	if (mc_Entity.x == 10202)
+	if (blockID == 202)
 		lmCoord.x -= 0.0667;
-
-	if (mc_Entity.x == 10203)
-		lmCoord.x += 0.0667;
 
 	if (color.a < 0.1)
 		color.a = 1.0;
@@ -537,7 +524,7 @@ void main() {
 	vec4 position = gbufferModelViewInverse * gl_ModelViewMatrix * gl_Vertex;
 	
 	float istopv = gl_MultiTexCoord0.t < mc_midTexCoord.t ? 1.0 : 0.0;
-	position.xyz = WavingBlocks(position.xyz, istopv);
+	position.xyz = WavingBlocks(position.xyz, blockID, istopv);
 
     #ifdef WORLD_CURVATURE
 	position.y -= WorldCurvature(position.xz);

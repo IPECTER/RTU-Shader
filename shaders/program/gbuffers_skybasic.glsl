@@ -16,6 +16,7 @@ varying vec3 upVec, sunVec;
 
 //Uniforms//
 uniform int isEyeInWater;
+uniform int moonPhase;
 uniform int worldTime;
 
 uniform float blindFactor, darknessFactor;
@@ -32,6 +33,7 @@ uniform ivec2 eyeBrightnessSmooth;
 
 uniform vec3 cameraPosition;
 
+uniform mat4 gbufferModelView;
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 gbufferProjectionInverse;
 
@@ -50,64 +52,57 @@ float moonVisibility = clamp((dot(-sunVec, upVec) + 0.05) * 10.0, 0.0, 1.0);
 
 vec3 lightVec = sunVec * (1.0 - 2.0 * float(timeAngle > 0.5325 && timeAngle < 0.9675));
 
+vec3 moonPhaseVecs[8] = vec3[8](
+	vec3( 0.0 ,  0.0 ,  1.0 ),
+	vec3( 0.0 , -0.89,  0.45),
+	vec3( 0.0 , -1.0 ,  0.0 ),
+	vec3( 0.0 , -0.45, -0.89),
+	vec3( 0.0 ,  0.0 , -1.0 ),
+	vec3( 0.0 ,  0.45, -0.89),
+	vec3( 0.0 ,  1.0 ,  0.0 ),
+	vec3( 0.0 ,  0.89,  0.45)
+);
+
+vec2 moonDiffuse[8] = vec2[8](
+	vec2( 0.0  ,  0.0  ),
+	vec2(-0.125,  1.0  ),
+	vec2(-0.2  ,  0.625),
+	vec2(-0.8  ,  0.375),
+	vec2(-0.75 , -0.25 ),
+	vec2(-0.8  ,  0.375),
+	vec2(-0.2  ,  0.625),
+	vec2(-0.125,  1.0  )
+);
+
 //Common Functions//
 float GetLuminance(vec3 color) {
 	return dot(color,vec3(0.299, 0.587, 0.114));
-}
-
-void RoundSunMoon(inout vec3 color, vec3 viewPos, vec3 sunColor, vec3 moonColor) {
-	float VoL = dot(normalize(viewPos),sunVec);
-	float isMoon = float(VoL < 0.0);
-	float sun = pow(abs(VoL), 800.0 * isMoon + 800.0) * (1.0 - sqrt(rainStrength));
-
-	vec3 sunMoonCol = mix(moonColor * moonVisibility, sunColor * sunVisibility, float(VoL > 0.0));
-	color += sun * sunMoonCol * 16.0;
-}
-
-void SunGlare(inout vec3 color, vec3 viewPos, vec3 lightCol) {
-	float VoL = dot(normalize(viewPos), lightVec);
-	float visfactor = 0.05 * (-0.8 * timeBrightness + 1.0) * (3.0 * rainStrength + 1.0);
-	float invvisfactor = 1.0 - visfactor;
-
-	float visibility = clamp(VoL * 0.5 + 0.5, 0.0, 1.0);
-    visibility = visfactor / (1.0 - invvisfactor * visibility) - visfactor;
-	visibility = clamp(visibility * 1.015 / invvisfactor - 0.015, 0.0, 1.0);
-	visibility = mix(1.0, visibility, 0.03125 * eBS + 0.96875) * (1.0 - rainStrength * eBS * 0.875);
-	visibility *= shadowFade * LIGHT_SHAFT_STRENGTH;
-	//visibility *= voidFade;
-	#if MC_VERSION >= 11800
-	visibility *= clamp((cameraPosition.y + 70.0) / 8.0, 0.0, 1.0);
-	#else
-	visibility *= clamp((cameraPosition.y + 6.0) / 8.0, 0.0, 1.0);
-	#endif
-
-	#ifdef LIGHT_SHAFT
-	if (isEyeInWater == 1) color += 0.25 * lightCol * visibility;
-	#else
-	color += 0.25 * lightCol * visibility * (1.0 + 0.25 * isEyeInWater);
-	#endif
 }
 
 //Includes//
 #include "/lib/color/dimensionColor.glsl"
 #include "/lib/color/skyColor.glsl"
 #include "/lib/util/dither.glsl"
+#include "/lib/atmospherics/weatherDensity.glsl"
 #include "/lib/atmospherics/clouds.glsl"
 #include "/lib/atmospherics/sky.glsl"
+#include "/lib/atmospherics/sunmoon.glsl"
 
 //Program//
 void main() {
-	#ifdef OVERWORLD
+	vec3 albedo = vec3(0.0);
+	
+	#if defined OVERWORLD && !defined SKY_DEFERRED
 	vec4 screenPos = vec4(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z, 1.0);
 	vec4 viewPos = gbufferProjectionInverse * (screenPos * 2.0 - 1.0);
 	viewPos /= viewPos.w;
 	
-	vec3 albedo = GetSkyColor(viewPos.xyz, false);
+	albedo = GetSkyColor(viewPos.xyz, false);
 	
 	#ifdef ROUND_SUN_MOON
 	vec3 lightMA = mix(lightMorning, lightEvening, mefade);
     vec3 sunColor = mix(lightMA, sqrt(lightDay * lightMA * LIGHT_DI), timeBrightness);
-    vec3 moonColor = sqrt(lightNight);
+    vec3 moonColor = lightNight * 1.25;
 
 	RoundSunMoon(albedo, viewPos.xyz, sunColor, moonColor);
 	#endif
@@ -131,12 +126,8 @@ void main() {
 
 	#if ALPHA_BLEND == 0
 	albedo.rgb = sqrt(max(albedo.rgb, vec3(0.0)));
-	albedo.rgb = albedo.rgb + dither / vec3(64.0);
+	albedo.rgb = albedo.rgb + dither / vec3(128.0);
 	#endif
-	#endif
-	
-	#ifdef END
-	vec3 albedo = vec3(0.0);
 	#endif
 	
     /* DRAWBUFFERS:0 */

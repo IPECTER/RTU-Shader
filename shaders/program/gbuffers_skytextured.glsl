@@ -19,6 +19,7 @@ varying vec4 color;
 //Uniforms//
 uniform int renderStage;
 
+uniform float frameTimeCounter;
 uniform float nightVision;
 uniform float rainStrength;
 uniform float timeAngle, timeBrightness;
@@ -41,6 +42,10 @@ uniform sampler2D gaux1;
 #define MC_RENDER_STAGE_MOON 1
 #endif
 
+#ifndef MC_RENDER_STAGE_CUSTOM_SKY
+#define MC_RENDER_STAGE_CUSTOM_SKY 1
+#endif
+
 //Common Variables//
 float eBS = eyeBrightnessSmooth.y / 240.0;
 float sunVisibility  = clamp((dot( sunVec, upVec) + 0.05) * 10.0, 0.0, 1.0);
@@ -53,6 +58,7 @@ float GetLuminance(vec3 color) {
 
 //Includes//
 #include "/lib/color/dimensionColor.glsl"
+#include "/lib/util/dither.glsl"
 
 //Program//
 void main() {
@@ -60,7 +66,32 @@ void main() {
 
 	#ifdef OVERWORLD
 	albedo *= color;
-	albedo.rgb = pow(albedo.rgb,vec3(2.2)) * SKYBOX_BRIGHTNESS * albedo.a;
+	albedo.rgb = pow(albedo.rgb,vec3(2.2)) * albedo.a;
+
+	#if MC_VERSION >= 11605
+	vec4 screenPos = vec4(gl_FragCoord.xy / vec2(viewWidth, viewHeight), gl_FragCoord.z, 1.0);
+	vec4 viewPos = gbufferProjectionInverse * (screenPos * 2.0 - 1.0);
+	viewPos /= viewPos.w;
+	
+	float VoU = dot(normalize(viewPos.xyz), upVec);
+
+	float sunFade = smoothstep(0.0, 1.0, 1.0 - pow(1.0 - max(VoU * 0.975 + 0.025, 0.0), 8.0));
+	sunFade *= sunFade;
+
+	if (renderStage == MC_RENDER_STAGE_CUSTOM_SKY) {
+		albedo.rgb *= SKYBOX_INTENSITY * SKYBOX_INTENSITY;
+		albedo.a *= SKYBOX_OPACITY;
+	}
+	if (renderStage == MC_RENDER_STAGE_SUN) {
+		albedo.rgb *= SUN_INTENSITY * SUN_INTENSITY * sunFade;
+	}
+	if (renderStage == MC_RENDER_STAGE_MOON) {
+		albedo.rgb *= MOON_INTENSITY * MOON_INTENSITY * sunFade;
+	}
+	#else 
+	albedo.rgb *= SKYBOX_INTENSITY * SKYBOX_INTENSITY;
+	albedo.a *= SKYBOX_OPACITY;
+	#endif
 	
 	#ifdef ROUND_SUN_MOON
 	if (renderStage == MC_RENDER_STAGE_SUN || renderStage == MC_RENDER_STAGE_MOON) {
@@ -85,7 +116,7 @@ void main() {
 	albedo.rgb = GetLuminance(albedo.rgb) * endCol.rgb;
 	#endif
 
-	albedo.rgb *= SKYBOX_BRIGHTNESS * 0.02;
+	albedo.rgb *= SKYBOX_INTENSITY * 0.02 * 16.0 / 16.0;
 	#endif
 
 	#if ALPHA_BLEND == 0

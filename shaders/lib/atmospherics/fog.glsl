@@ -61,9 +61,11 @@ vec3 GetFogColor(vec3 viewPos) {
 #endif
 
 void NormalFog(inout vec3 color, vec3 viewPos) {
-	#if DISTANT_FADE > 0
-	#if DISTANT_FADE_STYLE == 0
-	float fogFactor = length(viewPos);
+	float viewLength = length(viewPos);
+
+	#if FAR_VANILLA_FOG > 0
+	#if FAR_VANILLA_FOG_STYLE == 0
+	float fogFactor = viewLength;
 	#else
 	vec4 worldPos = gbufferModelViewInverse * vec4(viewPos, 1.0);
 	worldPos.xyz /= worldPos.w;
@@ -72,20 +74,34 @@ void NormalFog(inout vec3 color, vec3 viewPos) {
 	#endif
 	
 	#ifdef OVERWORLD
-	float fog = length(viewPos) * FOG_DENSITY / 256.0;
+	float fog = viewLength * fogDensity / 1024.0;
 	float clearDay = sunVisibility * (1.0 - rainStrength);
-	fog *= mix(1.0, (0.5 * rainStrength + 1.0) / (3.0 * clearDay + 1.0) * eBS, eBS);
+
+	#ifdef DISTANT_HORIZONS
+	fog *= FOG_DENSITY_DH;
+	#endif
+
+	fog *= mix(FOG_DENSITY_INDOOR, mix(1.0, FOG_DENSITY_WEATHER, rainStrength) / mix(1.0 / FOG_DENSITY_NIGHT, 1.0, clearDay) * eBS, eBS);
 	fog = 1.0 - exp(-2.0 * pow(fog, 0.35 * clearDay * eBS + 1.25));
+
 	vec3 fogColor = GetFogColor(viewPos);
 
-	#if DISTANT_FADE == 1 || DISTANT_FADE == 3
+	#if FAR_VANILLA_FOG == 1 || FAR_VANILLA_FOG == 3
 	if(isEyeInWater == 0.0){
 		#if MC_VERSION >= 11800
 		float fogOffset = 0.0;
 		#else
 		float fogOffset = 12.0;
 		#endif
-		float vanillaFog = 1.0 - (far - (fogFactor + fogOffset)) * 5.0 / (FOG_DENSITY * far);
+
+		float fogFar = far;
+		float vanillaDensity = 0.2;
+		#ifdef DISTANT_HORIZONS
+		fogFar = dhFarPlane * 0.5;
+		vanillaDensity = 0.4;
+		#endif
+
+		float vanillaFog = 1.0 - (fogFar - (fogFactor + fogOffset)) / (vanillaDensity * fogFar * FOG_DENSITY_VANILLA);
 		vanillaFog = clamp(vanillaFog, 0.0, 1.0);
 	
 		if(vanillaFog > 0.0){
@@ -106,24 +122,37 @@ void NormalFog(inout vec3 color, vec3 viewPos) {
 	#endif
 
 	#ifdef NETHER
-	float viewLength = length(viewPos);
-	float fog = 2.0 * pow(viewLength * FOG_DENSITY / 256.0, 1.5);
-	#if DISTANT_FADE == 2 || DISTANT_FADE == 3
+	float fog = 2.0 * pow(viewLength * fogDensity / 256.0, 1.5);
+
+	#if FAR_VANILLA_FOG == 2 || FAR_VANILLA_FOG == 3
+	#ifndef DISTANT_HORIZONS
 	fog += 6.0 * pow(fogFactor * 1.5 / far, 4.0);
+	#else
+	fog += 6.0 * pow(fogFactor * 3.0 / dhFarPlane, 4.0);
 	#endif
+	#endif
+
 	fog = 1.0 - exp(-fog);
+
 	vec3 fogColor = netherCol.rgb * 0.0425;
 	#endif
 
 	#ifdef END
-	float fog = length(viewPos) * FOG_DENSITY / 128.0;
-	#if DISTANT_FADE == 2 || DISTANT_FADE == 3
-	fog += 6.0 * pow(fogFactor * 1 / far, 6.0);
+	float fog = viewLength * fogDensity / 512.0;
+
+	#if FAR_VANILLA_FOG == 2 || FAR_VANILLA_FOG == 3
+	#ifndef DISTANT_HORIZONS
+	fog += 2.0 * pow(fogFactor * 1.5 / far, 4.0);
+	#else
+	fog += 2.0 * pow(fogFactor * 3.0 / dhFarPlane, 4.0);
 	#endif
-	fog = 1.0 - exp(-0.8 * fog * fog);
-	vec3 fogColor = endCol.rgb * 0.00625;
+	#endif
+
+	fog = 1.0 - exp(-fog);
+
+	vec3 fogColor = endCol.rgb * 0.003;
 	#ifndef LIGHT_SHAFT
-	fogColor *= 2.5;
+	fogColor *= 4.0;
 	#endif
 	#endif
 

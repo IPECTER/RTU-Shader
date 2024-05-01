@@ -1,13 +1,25 @@
-float GetPuddles(vec3 worldPos, vec2 coord, float wetness) {
+float GetPuddles(vec3 worldPos, vec2 coord, float skylight, float NoU, float wetness) {
+    if (wetness < 0.001) return 0.0;
+
 	worldPos = (worldPos + cameraPosition) * 0.005;
 
     float height = texture2DGradARB(normals, coord, dcdx, dcdy).a;
     height = mix(1.0, height, PARALLAX_DEPTH);
     height = smoothstep(1.0, 0.95, height) * 0.1 - 0.05;
-    float noise = texture2D(noisetex,worldPos.xz * 0.5  ).r * 0.375;
-		  noise+= texture2D(noisetex,worldPos.xz * 0.125).r * 0.625;
-		  noise = noise + (wetness * 1.25 - 0.65) + height, 0.0;
-	return smoothstep(0.4, 0.6, noise);
+    float noise = texture2D(noisetex, worldPos.xz * 0.5  ).r * 0.375;
+		  noise+= texture2D(noisetex, worldPos.xz * 0.125).r * 0.625;
+		  noise = noise + height + (wetness * REFLECTION_RAIN_AMOUNT - 0.5);
+
+    float puddles = smoothstep(0.4, 0.6, noise);
+    
+    #ifdef WEATHER_PERBIOME
+    float weatherWeight = isCold + isDesert + isMesa + isSavanna;
+    puddles *= 1.0 - weatherWeight;
+    #endif
+    
+    puddles *= clamp(skylight * 32.0 - 31.0, 0.0, 1.0) * clamp(NoU, 0.0, 1.0);
+
+	return puddles;
 }
 
 float rand(vec2 worldPos){
@@ -25,8 +37,8 @@ float GetRipple(vec3 worldPos, vec2 offset) {
     vec2 pposfr = fract(ppossh);
     vec2 pposfl = floor(ppossh);
 	
-	float val = texture2D(noisetex, ppos / 128.0 + frametime * 0.007).r * 0.35;
-	val += texture2D(noisetex, ppos / 128.0 - frametime * 0.005).r * 0.35;
+	float val = texture2D(noisetex, ppos / 64.0 + frametime * 0.007).r * 0.125;
+	val += texture2D(noisetex, ppos / 64.0 - frametime * 0.005).r * 0.125;
 
     float seed = rand(pposfl);
     float rippleTime = frametime * 1.7 + fract(seed * 1.618);
@@ -60,5 +72,15 @@ vec3 GetPuddleNormal(vec3 worldPos, vec3 viewPos, mat3 tbn) {
 	vec3 normalMap = vec3(xDelta, yDelta, 1.0 - (xDelta * xDelta + yDelta * yDelta));
 	normalMap = normalMap * normalStrength + vec3(0.0, 0.0, 1.0 - normalStrength);
 
-    return clamp(normalize(normalMap * tbn),vec3(-1.0),vec3(1.0));
+    return clamp(normalize(normalMap * tbn), vec3(-1.0), vec3(1.0));
+}
+
+void ApplyPuddleToMaterial(float puddles, inout vec4 albedo, inout float smoothness, inout float f0, float porosity) {
+    float puddleSmoothness = sqrt(1.0 - 0.75 * porosity);
+    float puddleDarkening = (0.5 * porosity + 0.15);	
+    
+    smoothness = mix(smoothness, 1.0, puddles * puddleSmoothness);
+    f0 = max(f0, puddles * 0.02);
+
+    albedo.rgb *= 1.0 - (puddles * puddleDarkening);
 }

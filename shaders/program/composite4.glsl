@@ -45,7 +45,7 @@ vec3 BloomTile(float lod, vec2 coord, vec2 offset) {
 		}
 	}
 
-	return pow(bloom / 32.0, vec3(0.25));
+	return bloom;
 }
 
 #include "/lib/util/dither.glsl"
@@ -60,6 +60,8 @@ void main() {
 	     blur += BloomTile(5.0, bloomCoord, vec2(0.6875   , 0.25  ) + vec2(12.0, 4.0) * view);
 	     blur += BloomTile(6.0, bloomCoord, vec2(0.625    , 0.3125) + vec2( 8.0, 8.0) * view);
 	     blur += BloomTile(7.0, bloomCoord, vec2(0.640625 , 0.3125) + vec2(12.0, 8.0) * view);
+
+		 blur = pow(blur / 32.0, vec3(0.25));
 		
 		 blur = clamp(blur + (Bayer8(gl_FragCoord.xy) - 0.5) / 384.0, vec3(0.0), vec3(1.0));
 

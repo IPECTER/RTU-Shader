@@ -94,7 +94,7 @@ void RetroDither(inout vec3 color, float dither) {
 	vec3 normColor = color / lenColor;
 
 	dither = mix(dither, 0.5, exp(-2.0 * lenColor)) - 0.25;
-	color = normColor * floor(lenColor * 4.0 + dither * 1.7) / 4.0;
+	color = normColor * floor(lenColor * 16.0 + dither * 1.7) / 16.0;
 
 	color = max(pow(color.rgb, vec3(4.0)), vec3(0.0));
 }
@@ -144,7 +144,7 @@ void Bloom(inout vec3 color, vec2 coord) {
 	#elif BLOOM_RADIUS == 7
 	vec3 blur = (blur1 * 7.76 + blur2 * 7.41 + blur3 * 6.43 + blur4 * 5.04 + blur5 * 3.51 + blur6 * 2.11 + blur7) / 33.26;
 	#endif
-
+	
 	#if BLOOM_CONTRAST == 0
 	color = mix(color, blur, 0.2 * BLOOM_STRENGTH);
 	#else
@@ -178,10 +178,84 @@ void ColorGrading(inout vec3 color) {
 	color = mix(color, cgTint, CG_TM);
 }
 
+vec3 RGB2HSV(vec3 c){
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+vec3 HSV2RGB(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+void Notorious6Test(inout vec3 color) {
+	vec2 testCoord = texCoord * vec2(8.0,6.0) - vec2(3.5, 1.0);
+
+	// if (testCoord.x > 0 && testCoord.x < 1 && testCoord.y > 0 && testCoord.y < 1){
+	// 	float h = floor((1.0 - testCoord.y) * 18.0) / 18.0;
+
+	// 	color = pow(HSV2RGB(vec3(h, 1.0, 1.0)), vec3(2.2));
+	// 	color *= exp2(floor(testCoord.x * 20.0) - 10.0);
+		
+	// 	color /= exp2(2.0 + EXPOSURE);
+	// }
+
+	if (testCoord.x > -2 && testCoord.x < 3 && testCoord.y > 0 && testCoord.y < 1){
+		float h = floor((1.0 - testCoord.y) * 18.0) / 18.0;
+		float s = pow(floor(testCoord.x) * 0.25 + 0.5, 0.5);
+	
+		color = pow(HSV2RGB(vec3(h, s, 1.0)), vec3(2.2));
+		color *= exp2(floor(fract(testCoord.x) * 20.0) - 10.0);
+	
+		color /= exp2(2.0 + EXPOSURE);
+	}
+}
+
+mat3 inverseMatrix(mat3 m) {
+	float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
+	float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
+	float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
+
+	float b01 = a22 * a11 - a12 * a21;
+	float b11 = -a22 * a10 + a12 * a20;
+	float b21 = a21 * a10 - a11 * a20;
+
+	float det = a00 * b01 + a01 * b11 + a02 * b21;
+
+	return mat3(
+		b01, (-a22 * a01 + a02 * a21), (a12 * a01 - a02 * a11),
+		b11, (a22 * a00 - a02 * a20), (-a12 * a00 + a02 * a10),
+		b21, (-a21 * a00 + a01 * a20), (a11 * a00 - a01 * a10)
+	) / det;
+}
+
 void BSLTonemap(inout vec3 color) {
-	color = color * exp2(2.0 + EXPOSURE);
+	color *= exp2(2.0 + EXPOSURE);
+
+	float s = TONEMAP_WHITE_PATH;
+
+	mat3 desatMatrix = mat3(
+		vec3(1.0 - 0.05 * s, 0.04 * s, 0.01 * s),
+		vec3(0.04 * s, 1.0 - 0.08 * s, 0.04 * s),
+		vec3(0.01 * s, 0.04 * s, 1.0 - 0.05 * s)
+	);
+
+	mat3 satMatrix = inverseMatrix(desatMatrix);
+	
+	color *= desatMatrix;
+
 	color = color / pow(pow(color, vec3(TONEMAP_WHITE_CURVE)) + 1.0, vec3(1.0 / TONEMAP_WHITE_CURVE));
 	color = pow(color, mix(vec3(TONEMAP_LOWER_CURVE), vec3(TONEMAP_UPPER_CURVE), sqrt(color)));
+
+	color *= satMatrix;
+
+	color = clamp(color, vec3(0.0), vec3(1.0));
 }
 
 void ColorSaturation(inout vec3 color) {
@@ -241,7 +315,7 @@ void main() {
 	#endif
 	
 	#ifdef RETRO_FILTER
-	float dither = Bayer8(gl_FragCoord.xy);
+	float dither = Bayer8(gl_FragCoord.xy / RETRO_FILTER_SIZE);
 	RetroDither(color.rgb, dither);
 	#endif
 	
@@ -253,6 +327,8 @@ void main() {
 	float exposure = 1.0;
 	AutoExposure(color, exposure, tempExposure);
 	#endif
+
+	// Notorious6Test(color);
 	
 	#ifdef COLOR_GRADING
 	ColorGrading(color);

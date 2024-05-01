@@ -41,7 +41,11 @@ vec3 GetLightShafts(float pixeldepth0, float pixeldepth1, vec3 color, float dith
 	vec3 vl = vec3(0.0);
 
 	#ifdef TAA
+	#if TAA_MODE == 0
 	dither = fract(dither + frameCounter * 0.618);
+	#else
+	dither = fract(dither + frameCounter * 0.5);
+	#endif
 	#endif
 	
 	vec3 screenPos = vec3(texCoord, pixeldepth0);

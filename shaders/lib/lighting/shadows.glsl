@@ -74,7 +74,7 @@ vec3 SampleBasicShadow(vec3 shadowPos, float subsurface) {
     return clamp(shadowCol * (1.0 - shadow0) + shadow0, vec3(0.0), vec3(16.0));
 }
 
-vec3 SampleFilteredShadow(vec3 shadowPos, float offset, float biasStep, float subsurface) {
+vec3 SampleFilteredShadow(vec3 shadowPos, float offset, float subsurface) {
     float shadow0 = 0.0;
     
     for (int i = 0; i < 9; i++) {
@@ -105,7 +105,7 @@ vec3 SampleFilteredShadow(vec3 shadowPos, float offset, float biasStep, float su
     return clamp(shadowCol * (1.0 - shadow0) + shadow0, vec3(0.0), vec3(16.0));
 }
 
-vec3 GetShadow(vec3 worldPos, float NoL, float subsurface, float skylight) {
+vec3 GetShadow(vec3 worldPos, vec3 normal, float NoL, float subsurface, float skylight) {
     #if SHADOW_PIXEL > 0
     worldPos = (floor((worldPos + cameraPosition) * SHADOW_PIXEL + 0.01) + 0.5) /
                SHADOW_PIXEL - cameraPosition;
@@ -115,6 +115,21 @@ vec3 GetShadow(vec3 worldPos, float NoL, float subsurface, float skylight) {
 
     float distb = sqrt(dot(shadowPos.xy, shadowPos.xy));
     float distortFactor = distb * shadowMapBias + (1.0 - shadowMapBias);
+
+    #if SHADOW_BIAS == 1
+    if (subsurface == 0) {
+        float distortNBias = distortFactor * shadowDistance / 256.0;
+        distortNBias *= distortNBias;
+        
+        vec3 worldNormal = (gbufferModelViewInverse * vec4(normal, 0.0)).xyz;
+        worldPos += worldNormal * distortNBias * 8192.0 / shadowMapResolution;
+        shadowPos = ToShadow(worldPos);
+
+        distb = sqrt(dot(shadowPos.xy, shadowPos.xy));
+        distortFactor = distb * shadowMapBias + (1.0 - shadowMapBias);
+    }
+    #endif
+
     shadowPos = DistortShadow(shadowPos, distortFactor);
 
     bool doShadow = shadowPos.x > 0.0 && shadowPos.x < 1.0 &&
@@ -124,22 +139,39 @@ vec3 GetShadow(vec3 worldPos, float NoL, float subsurface, float skylight) {
     doShadow = doShadow && skylight > 0.001;
     #endif
 
+    #ifdef OVERWORLD
     float skylightShadow = smoothstep(0.866, 1.0, skylight);
+    skylightShadow *= skylightShadow;
+    
     if (!doShadow) return vec3(skylightShadow);
+    #endif
+    #ifdef END
+    if (!doShadow) return vec3(1.0);
+    #endif
+    
+    float bias = 0.0;
+    float offset = 1.0 / shadowMapResolution;
 
+    #if SHADOW_BIAS == 0
     float biasFactor = sqrt(1.0 - NoL * NoL) / NoL;
     float distortBias = distortFactor * shadowDistance / 256.0;
     distortBias *= 8.0 * distortBias;
     float distanceBias = sqrt(dot(worldPos.xyz, worldPos.xyz)) * 0.005;
-    
-    float bias = (distortBias * biasFactor + distanceBias + 0.05) / shadowMapResolution;
-    float offset = 1.0 / shadowMapResolution;
+
+    bias = (distortBias * biasFactor + distanceBias + 0.05) / shadowMapResolution;
+    #else
+    bias = 0.35 / shadowMapResolution;
+    #endif
     
     if (subsurface > 0.0) {
+        float blurFadeIn = clamp(distb * 20.0, 0.0, 1.0);
+        float blurFadeOut = 1.0 - clamp(distb * 10.0 - 2.0, 0.0, 1.0);
+        float blurMult = blurFadeIn * blurFadeOut * (1.0 - NoL);
+        blurMult = blurMult * 1.5 + 1.0;
+
+        offset = 0.0007 * blurMult;
         bias = 0.0002;
-        offset = 0.0007;
     }
-    float biasStep = 0.001 * subsurface * (1.0 - NoL);
     
     #if SHADOW_PIXEL > 0
     bias += 0.0025 / SHADOW_PIXEL;
@@ -148,7 +180,7 @@ vec3 GetShadow(vec3 worldPos, float NoL, float subsurface, float skylight) {
     shadowPos.z -= bias;
 
     #ifdef SHADOW_FILTER
-    vec3 shadow = SampleFilteredShadow(shadowPos, offset, biasStep, subsurface);
+    vec3 shadow = SampleFilteredShadow(shadowPos, offset, subsurface);
     #else
     vec3 shadow = SampleBasicShadow(shadowPos, subsurface);
     #endif
@@ -166,6 +198,8 @@ vec3 GetSubsurfaceShadow(vec3 worldPos, float subsurface, float skylight) {
     shadowPos = DistortShadow(shadowPos, distortFactor);
 
     vec3 subsurfaceShadow = vec3(0.0);
+    
+    vec3 offsetScale = vec3(0.002 / distortFactor, 0.002 / distortFactor, 0.001) * (subsurface * 0.75 + 0.25);
 
     for(int i = 0; i < 12; i++) {
         gradNoise = fract(gradNoise + 1.618);
@@ -175,12 +209,7 @@ vec3 GetSubsurfaceShadow(vec3 worldPos, float subsurface, float skylight) {
         vec2 offset2D = vec2(cos(rot), sin(rot)) * dist;
         float offsetZ = -(dist * dist + 0.025);
 
-        vec3 offsetScale = vec3(0.002 / distortFactor, 0.002 / distortFactor, 0.001);
-
-        vec3 lowOffset = vec3(0.0, 0.0, -0.00025 * (1.0 + gradNoise) * distortFactor);
-        vec3 highOffset = vec3(offset2D, offsetZ) * offsetScale;
-
-        vec3 offset = highOffset * (subsurface * 0.75 + 0.25);
+        vec3 offset = vec3(offset2D, offsetZ) * offsetScale;
 
         vec3 samplePos = shadowPos + offset;
         float shadow0 = shadow2D(shadowtex0, samplePos).x;
@@ -204,10 +233,12 @@ vec3 GetSubsurfaceShadow(vec3 worldPos, float subsurface, float skylight) {
     return subsurfaceShadow;
 }
 #else
-vec3 GetShadow(vec3 worldPos, float NoL, float subsurface, float skylight) {
+vec3 GetShadow(vec3 worldPos, vec3 normal, float NoL, float subsurface, float skylight) {
     #ifdef OVERWORLD
-    float shadow = smoothstep(0.866,1.0,skylight);
-    return vec3(shadow * shadow);
+    float skylightShadow = smoothstep(0.866,1.0,skylight);
+    skylightShadow *= skylightShadow;
+
+    return vec3(skylightShadow);
     #else
     return vec3(1.0);
     #endif

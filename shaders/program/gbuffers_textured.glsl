@@ -59,6 +59,10 @@ uniform vec3 previousCameraPosition;
 uniform sampler2D colortex9;
 #endif
 
+#ifdef DISTANT_HORIZONS
+uniform float dhFarPlane;
+#endif
+
 //Common Variables//
 float eBS = eyeBrightnessSmooth.y / 240.0;
 float sunVisibility  = clamp((dot( sunVec, upVec) + 0.05) * 10.0, 0.0, 1.0);
@@ -89,6 +93,7 @@ float GetLinearDepth(float depth) {
 #include "/lib/color/skyColor.glsl"
 #include "/lib/util/dither.glsl"
 #include "/lib/util/spaceConversion.glsl"
+#include "/lib/atmospherics/weatherDensity.glsl"
 #include "/lib/atmospherics/sky.glsl"
 #include "/lib/atmospherics/fog.glsl"
 #include "/lib/lighting/forwardLighting.glsl"
@@ -146,8 +151,8 @@ void main() {
 		#endif
 		
 		vec3 shadow = vec3(0.0);
-		GetLighting(albedo.rgb, shadow, viewPos, worldPos, lightmap, 1.0, NoL, 1.0,
-				    1.0, 0.0, 0.0, 0.0);
+		GetLighting(albedo.rgb, shadow, viewPos, worldPos, normal, lightmap, 1.0, NoL, 
+					1.0, 1.0, 0.0, 0.0, 0.0);
 
 		#if defined FOG && MC_VERSION >= 11500
 		Fog(albedo.rgb, viewPos);
